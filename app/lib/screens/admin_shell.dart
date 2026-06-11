@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
+import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 
 class AdminShell extends StatelessWidget {
@@ -122,7 +123,7 @@ class _GroupCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => GroupFormScreen(group: group)),
+          MaterialPageRoute(builder: (_) => GroupDetailScreen(group: group)),
         ),
         child: Card(
           child: Padding(
