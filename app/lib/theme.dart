@@ -63,32 +63,38 @@ ThemeData buildAppTheme() {
     ),
     cardTheme: CardThemeData(
       color: AppColors.white,
-      elevation: 3,
-      shadowColor: const Color(0x140E2A47),
+      elevation: 0,
       surfaceTintColor: Colors.transparent,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         side: const BorderSide(color: AppColors.line),
       ),
     ),
+    // HealthPass-style pill buttons.
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.coral,
         foregroundColor: Colors.white,
         disabledBackgroundColor: AppColors.coral.withValues(alpha: 0.45),
         disabledForegroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 17),
+        shape: const StadiumBorder(),
+        textStyle: GoogleFonts.inter(
+            fontWeight: FontWeight.w700, fontSize: 15, letterSpacing: 0.1),
+      ).copyWith(
+        overlayColor:
+            WidgetStatePropertyAll(Colors.black.withValues(alpha: 0.06)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.navy,
-        side: const BorderSide(color: AppColors.line, width: 1.5),
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: Colors.white,
+        side: const BorderSide(color: Color(0xFFCBD4DE), width: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        shape: const StadiumBorder(),
         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
@@ -98,19 +104,34 @@ ThemeData buildAppTheme() {
         textStyle: GoogleFonts.inter(fontWeight: FontWeight.w700),
       ),
     ),
+    // Clean white fields with a visible border (no grey wash).
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.field,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      hintStyle: GoogleFonts.inter(color: AppColors.muted),
+      fillColor: Colors.white,
+      hoverColor: const Color(0xFFFAFBFC),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      hintStyle: GoogleFonts.inter(color: const Color(0xFF9AA6B2)),
       labelStyle: GoogleFonts.inter(color: AppColors.muted, fontWeight: FontWeight.w600),
       floatingLabelStyle: GoogleFonts.inter(color: AppColors.navy, fontWeight: FontWeight.w700),
       prefixStyle: GoogleFonts.inter(color: AppColors.ink),
-      border: _border(AppColors.line, 1.5),
-      enabledBorder: _border(AppColors.line, 1.5),
+      border: _border(const Color(0xFFCBD4DE), 1.5),
+      enabledBorder: _border(const Color(0xFFCBD4DE), 1.5),
       focusedBorder: _border(AppColors.coral, 2),
       errorBorder: _border(AppColors.coralStrong, 1.5),
       focusedErrorBorder: _border(AppColors.coralStrong, 2),
+    ),
+    tabBarTheme: const TabBarThemeData(
+      indicatorColor: AppColors.coral,
+      labelColor: AppColors.navy,
+      unselectedLabelColor: AppColors.muted,
+      dividerColor: Colors.transparent,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      titleTextStyle: GoogleFonts.inter(
+          fontSize: 19, fontWeight: FontWeight.w800, color: AppColors.navy),
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

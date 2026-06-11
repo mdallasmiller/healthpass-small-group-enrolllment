@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
@@ -443,15 +443,16 @@ class _Segmented<T> extends StatelessWidget {
       children: values.map((v) {
         final isSel = v == selected;
         return InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(24),
           onTap: () => onChanged(v),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 120),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
               color: isSel ? AppColors.coral : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isSel ? AppColors.coral : AppColors.line, width: 1.5),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                  color: isSel ? AppColors.coral : const Color(0xFFCBD4DE), width: 1.5),
             ),
             child: Text(
               labelOf(v),
