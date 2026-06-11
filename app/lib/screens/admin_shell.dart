@@ -8,40 +8,63 @@ import '../widgets/ui.dart';
 import 'group_detail_screen.dart';
 import 'group_form_screen.dart';
 
-class AdminShell extends StatelessWidget {
+/// App shell: a persistent left sidebar (main navigation) plus a content area
+/// with its own nested navigator (dashboard <-> group detail). The sidebar
+/// stays put while the content navigates.
+class AdminShell extends StatefulWidget {
   const AdminShell({super.key});
+
+  @override
+  State<AdminShell> createState() => _AdminShellState();
+}
+
+class _AdminShellState extends State<AdminShell> {
+  final _contentNav = GlobalKey<NavigatorState>();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  Widget _content() => Navigator(
+        key: _contentNav,
+        onGenerateRoute: (s) =>
+            MaterialPageRoute(builder: (_) => const GroupDashboard()),
+      );
+
+  void _goGroups() {
+    _contentNav.currentState?.popUntil((r) => r.isFirst);
+    _scaffoldKey.currentState?.closeDrawer();
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, c) {
         final wide = c.maxWidth >= 820;
+        final sidebar = MainSidebar(onGroups: _goGroups);
+        final content = _content();
         if (wide) {
-          return const Scaffold(
+          return Scaffold(
             body: Row(
               children: [
-                SizedBox(width: 258, child: SideNav()),
-                Expanded(child: GroupDashboard()),
+                SizedBox(width: 258, child: sidebar),
+                Expanded(child: content),
               ],
             ),
           );
         }
         return Scaffold(
+          key: _scaffoldKey,
           appBar: AppBar(title: const BrandWordmark(size: 20)),
-          drawer: const Drawer(
-            backgroundColor: AppColors.navy,
-            child: SideNav(),
-          ),
-          body: const GroupDashboard(),
+          drawer: Drawer(backgroundColor: AppColors.navy, child: sidebar),
+          body: content,
         );
       },
     );
   }
 }
 
-/// Left navigation rail (permanent on wide screens, in a drawer on narrow).
-class SideNav extends StatelessWidget {
-  const SideNav({super.key});
+/// Persistent main navigation rail.
+class MainSidebar extends StatelessWidget {
+  final VoidCallback onGroups;
+  const MainSidebar({super.key, required this.onGroups});
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +80,12 @@ class SideNav extends StatelessWidget {
             child: BrandWordmark(size: 22),
           ),
           const SizedBox(height: 30),
-          const NavItem(icon: Icons.business_rounded, label: 'Groups', active: true),
+          NavItem(
+            icon: Icons.business_rounded,
+            label: 'Groups',
+            active: true,
+            onTap: onGroups,
+          ),
           const Spacer(),
           Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
           const SizedBox(height: 14),
@@ -97,6 +125,7 @@ class SideNav extends StatelessWidget {
   }
 }
 
+/// Dashboard content: the group list.
 class GroupDashboard extends StatelessWidget {
   const GroupDashboard({super.key});
 
@@ -113,8 +142,7 @@ class GroupDashboard extends StatelessWidget {
       stream: GroupService().watchGroups(),
       builder: (context, snap) {
         final groups = snap.data ?? [];
-        return CenteredColumn(
-          maxWidth: 920,
+        return PageBody(
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -123,8 +151,6 @@ class GroupDashboard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Eyebrow('Admin'),
-                      const SizedBox(height: 6),
                       Text('Groups', style: theme.textTheme.headlineMedium),
                       const SizedBox(height: 4),
                       Text('Configure rates and invite employees to enroll.',
@@ -177,7 +203,7 @@ class _GroupCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => GroupDetailScreen(group: group)),
+          MaterialPageRoute(builder: (_) => GroupDetailPage(group: group)),
         ),
         child: Card(
           child: Padding(

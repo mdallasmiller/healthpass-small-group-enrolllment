@@ -141,8 +141,8 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   Widget build(BuildContext context) {
     return Form(
       key: _formKey,
-      child: CenteredColumn(
-        maxWidth: 760,
+      child: PageBody(
+        maxWidth: 1100,
         children: [
           _detailsCard(),
           const SizedBox(height: 16),

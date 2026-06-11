@@ -180,6 +180,50 @@ class CenteredColumn extends StatelessWidget {
   }
 }
 
+/// Scrollable page body that fills the content area width (with padding),
+/// used inside the admin content area so pages are not a narrow centered strip.
+class PageBody extends StatelessWidget {
+  final List<Widget> children;
+  final double maxWidth;
+  final EdgeInsets padding;
+  final CrossAxisAlignment crossAxisAlignment;
+
+  const PageBody({
+    super.key,
+    this.maxWidth = 1400,
+    this.padding = const EdgeInsets.fromLTRB(40, 32, 40, 48),
+    this.crossAxisAlignment = CrossAxisAlignment.stretch,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) => Scrollbar(
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: c.maxHeight),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Padding(
+                  padding: padding,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: crossAxisAlignment,
+                    children: children,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Full-screen centered loading state.
 class LoadingScreen extends StatelessWidget {
   const LoadingScreen({super.key});

@@ -19,8 +19,7 @@ class RosterView extends StatelessWidget {
       stream: EmployeeService().watch(groupId),
       builder: (context, snap) {
         final employees = snap.data ?? [];
-        return CenteredColumn(
-          maxWidth: 760,
+        return PageBody(
           children: [
             Row(
               children: [
