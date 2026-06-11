@@ -7,8 +7,9 @@ import '../utils/pricing.dart';
 import '../widgets/ui.dart';
 import 'enroll_entry_screen.dart';
 
-/// The employee enrollment portal (M5): personal info + health coverage with a
-/// live monthly cost. Dental/ICHRA (M6) and review/sign (M7) follow.
+/// The employee enrollment portal: personal info, health coverage (medical +
+/// ICHRA), optional dental, and a review summary, all with a live monthly cost.
+/// Acknowledgements + signing are M7.
 class EnrollPortal extends StatefulWidget {
   final Group group;
   final Employee employee;
@@ -34,13 +35,35 @@ class _EnrollPortalState extends State<EnrollPortal> {
   final _address = TextEditingController();
   bool _tobacco = false;
 
+  // medical
   bool _hasSpouse = false;
   int _children = 0;
-
   MedicalPlan _plan = MedicalPlan.preventiveCooperative;
   String _level = '2500';
+  bool _ichraInterested = false;
 
-  List<String> get _steps => ['Your details', 'Coverage', 'Review'];
+  // dental
+  bool _dentalEnrolled = false;
+  bool _dentalSpouse = false;
+  int _dentalChildren = 0;
+
+  Group get _g => widget.group;
+
+  List<String> get _steps => [
+        'Your details',
+        'Coverage',
+        if (_g.dental.enabled) 'Dental',
+        'Review',
+      ];
+
+  Tier get _tier => determineTier(_hasSpouse, _children);
+  num get _medical =>
+      _plan == MedicalPlan.preventiveOnly ? 0 : medicalMonthly(_g, _level, _tier);
+
+  Tier get _dentalTier => determineTier(_dentalSpouse, _dentalChildren);
+  num get _dental => _dentalEnrolled ? dentalMonthly(_g, _dentalTier) : 0;
+
+  num get _total => _medical + _dental;
 
   @override
   void dispose() {
@@ -50,17 +73,11 @@ class _EnrollPortalState extends State<EnrollPortal> {
     super.dispose();
   }
 
-  Tier get _tier => determineTier(_hasSpouse, _children);
-
-  num get _monthly => _plan == MedicalPlan.preventiveOnly
-      ? 0
-      : medicalMonthly(widget.group, _level, _tier);
-
   void _next() {
-    if (_step == 0 && !_personalKey.currentState!.validate()) return;
-    if (_step < _steps.length - 1) {
-      setState(() => _step++);
+    if (_steps[_step] == 'Your details' && !_personalKey.currentState!.validate()) {
+      return;
     }
+    if (_step < _steps.length - 1) setState(() => _step++);
   }
 
   void _back() {
@@ -88,8 +105,8 @@ class _EnrollPortalState extends State<EnrollPortal> {
   }
 
   Widget _stepBody() {
-    switch (_step) {
-      case 0:
+    switch (_steps[_step]) {
+      case 'Your details':
         return _PersonalStep(
           formKey: _personalKey,
           first: _first,
@@ -101,25 +118,51 @@ class _EnrollPortalState extends State<EnrollPortal> {
           tobacco: _tobacco,
           onTobacco: (v) => setState(() => _tobacco = v),
         );
-      case 1:
+      case 'Coverage':
         return _CoverageStep(
-          group: widget.group,
+          group: _g,
           hasSpouse: _hasSpouse,
           children: _children,
           plan: _plan,
           level: _level,
           tier: _tier,
-          monthly: _monthly,
+          medical: _medical,
+          ichraInterested: _ichraInterested,
           onSpouse: (v) => setState(() => _hasSpouse = v),
           onChildren: (v) => setState(() => _children = v),
           onPlan: (p) => setState(() => _plan = p),
           onLevel: (l) => setState(() => _level = l),
+          onIchra: (v) => setState(() => _ichraInterested = v),
+        );
+      case 'Dental':
+        return _DentalStep(
+          group: _g,
+          enrolled: _dentalEnrolled,
+          spouse: _dentalSpouse,
+          children: _dentalChildren,
+          tier: _dentalTier,
+          dental: _dental,
+          total: _total,
+          onEnrolled: (v) => setState(() {
+            _dentalEnrolled = v;
+            if (v) {
+              // sensible default: mirror medical dependents
+              _dentalSpouse = _hasSpouse;
+              _dentalChildren = _children;
+            }
+          }),
+          onSpouse: (v) => setState(() => _dentalSpouse = v),
+          onChildrenChanged: (v) => setState(() => _dentalChildren = v),
         );
       default:
-        return _ReviewStub(
+        return _ReviewStep(
           tier: _tier,
-          monthly: _monthly,
           plan: _plan,
+          medical: _medical,
+          dentalEnrolled: _dentalEnrolled,
+          dental: _dental,
+          ichraInterested: _ichraInterested,
+          total: _total,
         );
     }
   }
@@ -274,8 +317,7 @@ class _PersonalStep extends StatelessWidget {
                     keyboardType: TextInputType.number,
                     inputFormatters: [_DobFormatter()],
                     decoration: const InputDecoration(hintText: 'dd.mm.yyyy'),
-                    validator: (v) =>
-                        (v == null || v.length < 10) ? 'dd.mm.yyyy' : null,
+                    validator: (v) => (v == null || v.length < 10) ? 'dd.mm.yyyy' : null,
                   ),
                 ),
               ),
@@ -288,8 +330,7 @@ class _PersonalStep extends StatelessWidget {
                     keyboardType: TextInputType.number,
                     inputFormatters: [_SsnFormatter()],
                     decoration: const InputDecoration(hintText: '###-##-####'),
-                    validator: (v) =>
-                        (v == null || v.length < 11) ? 'Enter a valid SSN' : null,
+                    validator: (v) => (v == null || v.length < 11) ? 'Enter a valid SSN' : null,
                   ),
                 ),
               ),
@@ -326,11 +367,13 @@ class _CoverageStep extends StatelessWidget {
   final MedicalPlan plan;
   final String level;
   final Tier tier;
-  final num monthly;
+  final num medical;
+  final bool ichraInterested;
   final ValueChanged<bool> onSpouse;
   final ValueChanged<int> onChildren;
   final ValueChanged<MedicalPlan> onPlan;
   final ValueChanged<String> onLevel;
+  final ValueChanged<bool> onIchra;
 
   const _CoverageStep({
     required this.group,
@@ -339,17 +382,18 @@ class _CoverageStep extends StatelessWidget {
     required this.plan,
     required this.level,
     required this.tier,
-    required this.monthly,
+    required this.medical,
+    required this.ichraInterested,
     required this.onSpouse,
     required this.onChildren,
     required this.onPlan,
     required this.onLevel,
+    required this.onIchra,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final coopFrom = medicalMonthly(group, level, tier);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -358,39 +402,12 @@ class _CoverageStep extends StatelessWidget {
         const Text('Add who is covered, then choose your plan.',
             style: TextStyle(color: AppColors.muted)),
         const SizedBox(height: 22),
-        // Dependents
-        _SwitchTile(
-          title: 'Cover my spouse / domestic partner',
-          subtitle: 'Adds your spouse to coverage.',
-          value: hasSpouse,
-          onChanged: onSpouse,
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            const Expanded(
-              child: Text('Children (26 and under)',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-            ),
-            _Stepper(value: children, onChanged: onChildren),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.field,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.people_alt_rounded, size: 16, color: AppColors.muted),
-              const SizedBox(width: 8),
-              Text('Your tier: ', style: TextStyle(color: AppColors.muted)),
-              Text(tier.label,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
-            ],
-          ),
+        _DependentsControl(
+          hasSpouse: hasSpouse,
+          children: children,
+          tier: tier,
+          onSpouse: onSpouse,
+          onChildren: onChildren,
         ),
         const SizedBox(height: 24),
         Text('Choose your plan',
@@ -401,7 +418,6 @@ class _CoverageStep extends StatelessWidget {
           title: 'Preventive Only',
           desc: 'Employee Assistance Program and preventive care, at no cost to you.',
           trailing: money(0),
-          trailingNote: 'per month',
           onTap: () => onPlan(MedicalPlan.preventiveOnly),
         ),
         const SizedBox(height: 10),
@@ -409,18 +425,12 @@ class _CoverageStep extends StatelessWidget {
           selected: plan == MedicalPlan.preventiveCooperative,
           title: 'Preventive + Cooperative',
           desc: 'Adds Healthcare Co-op coverage. Choose your deductible level below.',
-          trailing: money(coopFrom),
-          trailingNote: 'per month',
+          trailing: money(medicalMonthly(group, level, tier)),
           onTap: () => onPlan(MedicalPlan.preventiveCooperative),
         ),
         if (plan == MedicalPlan.preventiveCooperative) ...[
           const SizedBox(height: 18),
-          const Text('DEDUCTIBLE LEVEL',
-              style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8)),
+          const _MiniLabel('DEDUCTIBLE LEVEL'),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -438,62 +448,154 @@ class _CoverageStep extends StatelessWidget {
             ],
           ),
         ],
+        if (group.ichraEnabled) ...[
+          const SizedBox(height: 26),
+          _IchraSection(interested: ichraInterested, onChanged: onIchra),
+        ],
         const SizedBox(height: 24),
-        _CostSummary(monthly: monthly),
+        _CostSummary(label: 'ESTIMATED MEDICAL COST', amount: medical),
       ],
     );
   }
 }
 
-class _CostSummary extends StatelessWidget {
-  final num monthly;
-  const _CostSummary({required this.monthly});
+class _IchraSection extends StatelessWidget {
+  final bool interested;
+  final ValueChanged<bool> onChanged;
+  const _IchraSection({required this.interested, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.navy,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _MiniLabel('ICHRA (INDIVIDUAL COVERAGE HRA)'),
+        const SizedBox(height: 10),
+        _PlanCard(
+          selected: interested,
+          title: 'I\'m interested in ICHRA',
+          desc: 'Use your employer contribution toward an individual health plan. '
+              'An enrollment specialist will help you choose one.',
+          trailing: '',
+          onTap: () => onChanged(!interested),
+        ),
+        if (interested) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(13),
+            decoration: BoxDecoration(
+              color: AppColors.coralSoft,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.coralLine),
+            ),
+            child: const Row(
               children: [
-                Text('YOUR ESTIMATED COST',
-                    style: TextStyle(
-                        color: Color(0xFF9DB2CC),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1)),
-                SizedBox(height: 4),
-                Text('Updates as you choose',
-                    style: TextStyle(color: Color(0xFF9DB2CC), fontSize: 12.5)),
+                Icon(Icons.info_outline_rounded, size: 18, color: AppColors.coralStrong),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'An enrollment specialist will contact you soon to enroll in an '
+                    'individual health insurance plan.',
+                    style: TextStyle(color: Color(0xFF8A3A33), fontSize: 13, height: 1.4),
+                  ),
+                ),
               ],
             ),
           ),
-          Text(money(monthly),
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800)),
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 4),
-            child: Text('/mo',
-                style: TextStyle(color: Color(0xFF9DB2CC), fontWeight: FontWeight.w600)),
-          ),
         ],
-      ),
+      ],
     );
   }
 }
 
-class _ReviewStub extends StatelessWidget {
+// ---------------------------------------------------------------------------
+
+class _DentalStep extends StatelessWidget {
+  final Group group;
+  final bool enrolled;
+  final bool spouse;
+  final int children;
   final Tier tier;
-  final num monthly;
+  final num dental;
+  final num total;
+  final ValueChanged<bool> onEnrolled;
+  final ValueChanged<bool> onSpouse;
+  final ValueChanged<int> onChildrenChanged;
+
+  const _DentalStep({
+    required this.group,
+    required this.enrolled,
+    required this.spouse,
+    required this.children,
+    required this.tier,
+    required this.dental,
+    required this.total,
+    required this.onEnrolled,
+    required this.onSpouse,
+    required this.onChildrenChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Dental coverage', style: theme.textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text('Optional dental for you and your family (${group.dental.option.label}).',
+            style: const TextStyle(color: AppColors.muted)),
+        const SizedBox(height: 22),
+        _SwitchTile(
+          title: 'Add dental coverage',
+          subtitle: enrolled
+              ? '${money(dentalMonthly(group, tier))} per month'
+              : 'Turned off',
+          value: enrolled,
+          onChanged: onEnrolled,
+        ),
+        if (enrolled) ...[
+          const SizedBox(height: 18),
+          const _MiniLabel('WHO IS COVERED'),
+          const SizedBox(height: 12),
+          _DependentsControl(
+            hasSpouse: spouse,
+            children: children,
+            tier: tier,
+            onSpouse: onSpouse,
+            onChildren: onChildrenChanged,
+          ),
+        ],
+        const SizedBox(height: 24),
+        _CostSummary(
+          label: 'ESTIMATED TOTAL COST',
+          amount: total,
+          subtitle: 'Medical + dental',
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
+class _ReviewStep extends StatelessWidget {
+  final Tier tier;
   final MedicalPlan plan;
-  const _ReviewStub({required this.tier, required this.monthly, required this.plan});
+  final num medical;
+  final bool dentalEnrolled;
+  final num dental;
+  final bool ichraInterested;
+  final num total;
+  const _ReviewStep({
+    required this.tier,
+    required this.plan,
+    required this.medical,
+    required this.dentalEnrolled,
+    required this.dental,
+    required this.ichraInterested,
+    required this.total,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -507,9 +609,23 @@ class _ReviewStub extends StatelessWidget {
             style: TextStyle(color: AppColors.muted)),
         const SizedBox(height: 20),
         _row('Coverage tier', tier.label),
-        _row('Plan',
+        _row('Medical plan',
             plan == MedicalPlan.preventiveOnly ? 'Preventive Only' : 'Preventive + Cooperative'),
-        _row('Estimated monthly cost', '${money(monthly)}/mo'),
+        _row('Medical cost', '${money(medical)}/mo'),
+        _row('Dental', dentalEnrolled ? '${money(dental)}/mo' : 'Not enrolled'),
+        if (ichraInterested) _row('ICHRA', 'Specialist will contact you'),
+        const Divider(height: 28),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Total monthly cost',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.navy, fontSize: 16)),
+            ),
+            Text('${money(total)}/mo',
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, color: AppColors.coralStrong, fontSize: 18)),
+          ],
+        ),
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(14),
@@ -528,7 +644,7 @@ class _ReviewStub extends StatelessWidget {
   }
 
   Widget _row(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(
           children: [
             Expanded(child: Text(k, style: const TextStyle(color: AppColors.muted))),
@@ -540,18 +656,120 @@ class _ReviewStub extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Small shared controls
+// Shared controls
+
+class _DependentsControl extends StatelessWidget {
+  final bool hasSpouse;
+  final int children;
+  final Tier tier;
+  final ValueChanged<bool> onSpouse;
+  final ValueChanged<int> onChildren;
+  const _DependentsControl({
+    required this.hasSpouse,
+    required this.children,
+    required this.tier,
+    required this.onSpouse,
+    required this.onChildren,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SwitchTile(
+          title: 'Cover my spouse / domestic partner',
+          subtitle: 'Adds your spouse to coverage.',
+          value: hasSpouse,
+          onChanged: onSpouse,
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Children (26 and under)',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
+            ),
+            _Stepper(value: children, onChanged: onChildren),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.field,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.people_alt_rounded, size: 16, color: AppColors.muted),
+              const SizedBox(width: 8),
+              const Text('Your tier: ', style: TextStyle(color: AppColors.muted)),
+              Text(tier.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CostSummary extends StatelessWidget {
+  final String label;
+  final num amount;
+  final String? subtitle;
+  const _CostSummary({required this.label, required this.amount, this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.navy,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: Color(0xFF9DB2CC),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1)),
+                const SizedBox(height: 4),
+                Text(subtitle ?? 'Updates as you choose',
+                    style: const TextStyle(color: Color(0xFF9DB2CC), fontSize: 12.5)),
+              ],
+            ),
+          ),
+          Text(money(amount),
+              style: const TextStyle(
+                  color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800)),
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 4),
+            child: Text('/mo',
+                style: TextStyle(color: Color(0xFF9DB2CC), fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _PlanCard extends StatelessWidget {
   final bool selected;
-  final String title, desc, trailing, trailingNote;
+  final String title, desc, trailing;
   final VoidCallback onTap;
   const _PlanCard({
     required this.selected,
     required this.title,
     required this.desc,
     required this.trailing,
-    required this.trailingNote,
     required this.onTap,
   });
 
@@ -589,17 +807,19 @@ class _PlanCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(trailing,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.navy)),
-                Text(trailingNote,
-                    style: const TextStyle(color: AppColors.muted, fontSize: 11.5)),
-              ],
-            ),
+            if (trailing.isNotEmpty) ...[
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(trailing,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 17, color: AppColors.navy)),
+                  const Text('per month',
+                      style: TextStyle(color: AppColors.muted, fontSize: 11.5)),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -718,6 +938,18 @@ class _SwitchTile extends StatelessWidget {
       ],
     );
   }
+}
+
+class _MiniLabel extends StatelessWidget {
+  final String text;
+  const _MiniLabel(this.text);
+  @override
+  Widget build(BuildContext context) => Text(text,
+      style: const TextStyle(
+          color: AppColors.muted,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8));
 }
 
 class _DobFormatter extends TextInputFormatter {
