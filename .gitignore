@@ -29,3 +29,6 @@ functions/*.local
 .idea/
 .vscode/
 *.iml
+
+# internal, local-only
+TODO.md
