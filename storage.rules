@@ -1,0 +1,13 @@
+rules_version = '2';
+
+// Signatures and generated confirmation PDFs live under enrollments/.
+// These are written by Cloud Functions (Admin SDK, which bypasses these rules).
+// Clients are denied direct access; admins read via signed URLs issued by Functions.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

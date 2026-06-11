@@ -1,0 +1,43 @@
+rules_version = '2';
+
+// Security model:
+//  - Admins (authenticated staff) manage groups, rates, and rosters from the admin portal.
+//  - The EMPLOYEE enrollment portal does NOT write here directly. All employee/PHI reads
+//    and writes go through Cloud Functions (Admin SDK), authorized by the per-employee
+//    unique token + access code. The Admin SDK bypasses these rules, so we can default-deny
+//    everything for clients and only open the admin surface.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // An admin is a user with a doc under /admins/{uid}
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Admin directory: an admin can read their own record. Writes only via backend.
+    match /admins/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Groups and everything under them: admins only.
+    // Employee enrollment writes happen server-side via Functions (Admin SDK).
+    match /groups/{groupId} {
+      allow read, write: if isAdmin();
+
+      match /{document=**} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // Default deny everything else.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

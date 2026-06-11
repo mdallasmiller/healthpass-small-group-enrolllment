@@ -1,0 +1,31 @@
+# Flutter / Dart
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+app/.packages
+app/pubspec.lock
+**/.DS_Store
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+*-debug.log
+
+# Node / Functions
+functions/node_modules/
+functions/lib/
+functions/.env
+functions/*.local
+
+# Secrets / config that should not be committed
+**/serviceAccountKey*.json
+.env
+.env.*
+
+# IDE
+.idea/
+.vscode/
+*.iml
