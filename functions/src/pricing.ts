@@ -1,5 +1,5 @@
 /**
- * Pricing engine — ported from the HealthPass rate spreadsheet.
+ * Pricing engine, ported from the HealthPass rate spreadsheet.
  *
  * Enrollment uses 3 employee-facing tiers (per the enrollment outline):
  *   - employeeOnly

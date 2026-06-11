@@ -137,7 +137,7 @@ class LabeledField extends StatelessWidget {
   }
 }
 
-/// Centers content with a max width — keeps web layouts from stretching.
+/// Centers content with a max width and makes it scrollable.
 class CenteredColumn extends StatelessWidget {
   final double maxWidth;
   final EdgeInsets padding;
@@ -154,12 +154,25 @@ class CenteredColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth),
-        child: Padding(
-          padding: padding,
-          child: Column(crossAxisAlignment: crossAxisAlignment, children: children),
+    return LayoutBuilder(
+      builder: (context, c) => Scrollbar(
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: c.maxHeight),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: Padding(
+                  padding: padding,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: crossAxisAlignment,
+                    children: children,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );

@@ -182,6 +182,22 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
         child: CenteredColumn(
           maxWidth: 760,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.isEdit ? 'Edit group' : 'New group',
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Set the employer details, contribution rates, and dental coverage.',
+                    style: TextStyle(color: AppColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             _detailsCard(),
             const SizedBox(height: 16),
             _medicalCard(),
@@ -271,7 +287,7 @@ class _GroupFormScreenState extends State<GroupFormScreen> {
 
   Widget _medicalCard() {
     return SectionCard(
-      title: 'Contribution strategy — medical rates',
+      title: 'Contribution strategy (medical rates)',
       subtitle: 'Employee-facing monthly rates per cooperative level and tier.',
       child: _RatesGrid(controllers: _medical, money: _money),
     );

@@ -112,7 +112,7 @@ class _GroupCard extends StatelessWidget {
     final theme = Theme.of(context);
     final created = group.createdAt != null
         ? DateFormat.yMMMd().format(group.createdAt!)
-        : '—';
+        : 'Not set';
     return Material(
       color: Colors.transparent,
       child: InkWell(

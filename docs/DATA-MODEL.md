@@ -2,7 +2,7 @@
 
 > PHI/PII note: `ssn` and other sensitive fields are stored **encrypted** (app-layer envelope
 > encryption). Only Cloud Functions decrypt when strictly needed. Employees never access
-> Firestore directly — the enrollment portal calls Functions authorized by a unique token + access code.
+> Firestore directly - the enrollment portal calls Functions authorized by a unique token + access code.
 
 ## `admins/{uid}`
 Staff who can use the admin portal.

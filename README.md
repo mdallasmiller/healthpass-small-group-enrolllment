@@ -1,4 +1,4 @@
-# HealthPass + Health Access — Small Group Enrollment Platform
+# HealthPass + Health Access - Small Group Enrollment Platform
 
 Web application for enrolling small groups into HealthPass + Health Access benefits.
 Admins configure groups and rates, invite employees via secure unique links, and each
@@ -6,10 +6,10 @@ employee completes enrollment through a guided portal with live cost calculation
 
 ## Stack
 
-- **Frontend:** Flutter (Web) — `app/` — admin portal + employee enrollment portal
-- **Backend:** Firebase Cloud Functions (TypeScript) — `functions/` — pricing engine, unique URL + access code, email/SMS, scheduling
-- **Data:** Cloud Firestore — see `docs/DATA-MODEL.md`
-- **Storage:** Cloud Storage — signatures, generated confirmation PDFs
+- **Frontend:** Flutter (Web) - `app/` - admin portal + employee enrollment portal
+- **Backend:** Firebase Cloud Functions (TypeScript) - `functions/` - pricing engine, unique URL + access code, email/SMS, scheduling
+- **Data:** Cloud Firestore - see `docs/DATA-MODEL.md`
+- **Storage:** Cloud Storage - signatures, generated confirmation PDFs
 - **Hosting:** Firebase Hosting
 - **Email/SMS:** Mailgun / Twilio (called from Functions)
 

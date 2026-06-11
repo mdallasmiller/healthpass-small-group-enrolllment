@@ -48,7 +48,7 @@ export const bootstrapFirstAdmin = onCall(async (request) => {
 
 /**
  * Live quote endpoint used by the employee portal as selections change.
- * Stateless for now; M4–M5 will resolve rates from the group server-side.
+ * Stateless for now; M4-M5 will resolve rates from the group server-side.
  */
 export const computeQuoteFn = onCall((request) => {
   const data = request.data as QuoteInput | undefined;

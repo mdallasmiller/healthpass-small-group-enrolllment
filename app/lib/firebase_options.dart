@@ -53,11 +53,11 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDKg54kjkCXZNwkpSDkVf9CWBJj82HVdtw',
-    appId: '1:789476232348:web:aa30c350500e5a2dd63159',
-    messagingSenderId: '789476232348',
-    projectId: 'health-pass-cf171',
-    authDomain: 'health-pass-cf171.firebaseapp.com',
-    storageBucket: 'health-pass-cf171.firebasestorage.app',
+    apiKey: 'AIzaSyB1ewnDXd4bI-gfMU2LUmMWpJtBm5xAqN4',
+    appId: '1:200888432808:web:ce9e063086d541d154ea9d',
+    messagingSenderId: '200888432808',
+    projectId: 'healthpass-enrollment',
+    authDomain: 'healthpass-enrollment.firebaseapp.com',
+    storageBucket: 'healthpass-enrollment.firebasestorage.app',
   );
 }

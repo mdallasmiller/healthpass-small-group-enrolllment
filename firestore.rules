@@ -19,10 +19,14 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
-    // Admin directory: an admin can read their own record. Writes only via backend.
+    // Admin directory: an admin can read their own record.
     match /admins/{uid} {
       allow read: if isSignedIn() && request.auth.uid == uid;
-      allow write: if false;
+      // TEMP (dev bootstrap): while Cloud Functions are not deployed (Spark),
+      // allow a signed-in user to self-provision their own admin record.
+      // Replace with the first-admin-only bootstrapFirstAdmin function before production.
+      allow create: if isSignedIn() && request.auth.uid == uid;
+      allow update, delete: if false;
     }
 
     // Groups and everything under them: admins only.
