@@ -7,6 +7,7 @@ import '../services/employee_service.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
+import 'enroll_portal.dart';
 
 /// Landing screen for a per-employee enrollment link. Validates the access code
 /// before letting the employee into the portal.
@@ -419,8 +420,12 @@ class EnrollPortalPlaceholder extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: null,
-              child: const Text('Start (available soon)'),
+              onPressed: () => Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => EnrollPortal(group: group, employee: employee),
+                ),
+              ),
+              child: const Text('Start enrollment'),
             ),
           ),
           const SizedBox(height: 22),

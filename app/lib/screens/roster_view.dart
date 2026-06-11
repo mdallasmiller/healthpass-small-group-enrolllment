@@ -218,52 +218,51 @@ class _InviteDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
+    return AppDialog(
+      width: 520,
+      title: justCreated
+          ? '${name.isEmpty ? 'Employee' : name} added'
+          : 'Enrollment invite',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (justCreated) ...[
             Container(
-              width: 34,
-              height: 34,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE7F6EE),
-                shape: BoxShape.circle,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE7F6EE),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.check_rounded, color: Color(0xFF0A7D4F), size: 20),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF0A7D4F), size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Saved. The invite is ready to send.',
+                        style: TextStyle(
+                            color: Color(0xFF0A5538),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(height: 16),
           ],
-          Expanded(
-            child: Text(justCreated
-                ? '${name.isEmpty ? 'Employee' : name} added'
-                : 'Enrollment invite'),
+          Text(
+            'Send this link and access code to ${name.isEmpty ? 'the employee' : name}. '
+            'They open the link and enter the code to start enrollment.',
+            style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
           ),
+          const SizedBox(height: 20),
+          LabeledField(label: 'Enrollment link', child: _CopyBox(text: url)),
+          const SizedBox(height: 16),
+          LabeledField(label: 'Access code', child: _CopyBox(text: code, big: true)),
         ],
       ),
-      content: SizedBox(
-        width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              justCreated
-                  ? 'Their enrollment link and access code are ready. Send both to '
-                      '${name.isEmpty ? 'the employee' : name} to start enrollment.'
-                  : 'Send this link and access code to ${name.isEmpty ? 'the employee' : name}. '
-                      'They open the link and enter the code to start enrollment.',
-              style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
-            ),
-            const SizedBox(height: 20),
-            LabeledField(label: 'Enrollment link', child: _CopyBox(text: url)),
-            const SizedBox(height: 16),
-            LabeledField(label: 'Access code', child: _CopyBox(text: code, big: true)),
-          ],
-        ),
-      ),
       actions: [
-        FilledButton(
-            onPressed: () => Navigator.pop(context), child: const Text('Done')),
+        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
       ],
     );
   }
@@ -474,15 +473,14 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add employee'),
-      content: SizedBox(
-        width: 420,
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+    return AppDialog(
+      title: 'Add employee',
+      width: 460,
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
               Row(
                 children: [
                   Expanded(
@@ -533,11 +531,11 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
             ],
           ),
         ),
-      ),
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
+        const SizedBox(width: 8),
         FilledButton(onPressed: _submit, child: const Text('Add')),
       ],
     );

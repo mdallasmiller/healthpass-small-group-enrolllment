@@ -235,6 +235,69 @@ class LoadingScreen extends StatelessWidget {
   }
 }
 
+/// A consistent modal dialog with a title and a close (X) button.
+class AppDialog extends StatelessWidget {
+  final String title;
+  final Widget content;
+  final List<Widget> actions;
+  final double width;
+  const AppDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.actions = const [],
+    this.width = 480,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: width),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 14, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(title,
+                        style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.navy)),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close_rounded, size: 20, color: AppColors.muted),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 0),
+              child: content,
+            ),
+            if (actions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                child: Row(mainAxisAlignment: MainAxisAlignment.end, children: actions),
+              )
+            else
+              const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// A navigation item for the navy sidebars (admin shell + group detail).
 class NavItem extends StatelessWidget {
   final IconData icon;
