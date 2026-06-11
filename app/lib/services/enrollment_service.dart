@@ -20,4 +20,20 @@ class EnrollmentService {
     });
     await emp.update({'status': 'completed'});
   }
+
+  /// Reads a submitted enrollment for the admin view (null if not submitted).
+  Future<Map<String, dynamic>?> getEnrollment(
+    String groupId,
+    String employeeId,
+  ) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('groups')
+        .doc(groupId)
+        .collection('employees')
+        .doc(employeeId)
+        .collection('enrollment')
+        .doc('data')
+        .get();
+    return doc.exists ? doc.data() : null;
+  }
 }

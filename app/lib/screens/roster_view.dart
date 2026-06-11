@@ -9,6 +9,7 @@ import '../services/employee_service.dart';
 import '../theme.dart';
 import '../utils/codes.dart';
 import '../widgets/ui.dart';
+import 'enrollment_detail_screen.dart';
 
 class RosterView extends StatelessWidget {
   final String groupId;
@@ -71,6 +72,14 @@ class RosterView extends StatelessWidget {
                         employee: employees[i],
                         onDelete: () => EmployeeService().delete(groupId, employees[i].id!),
                         onInvite: () => _showInvite(context, employees[i]),
+                        onView: employees[i].status == EmployeeStatus.completed
+                            ? () => Navigator.of(context).push(MaterialPageRoute(
+                                  builder: (_) => EnrollmentDetailScreen(
+                                    groupId: groupId,
+                                    employee: employees[i],
+                                  ),
+                                ))
+                            : null,
                       ),
                     ],
                   ],
@@ -344,10 +353,12 @@ class _EmployeeRow extends StatelessWidget {
   final Employee employee;
   final VoidCallback onDelete;
   final VoidCallback onInvite;
+  final VoidCallback? onView;
   const _EmployeeRow({
     required this.employee,
     required this.onDelete,
     required this.onInvite,
+    this.onView,
   });
 
   @override
@@ -389,6 +400,18 @@ class _EmployeeRow extends StatelessWidget {
           if (created.isNotEmpty)
             Text(created, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
           const SizedBox(width: 12),
+          if (onView != null)
+            TextButton.icon(
+              onPressed: onView,
+              icon: const Icon(Icons.visibility_outlined, size: 16),
+              label: const Text('View'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.navy,
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          if (onView != null) const SizedBox(width: 4),
           OutlinedButton.icon(
             onPressed: onInvite,
             icon: const Icon(Icons.link_rounded, size: 16),
