@@ -13,32 +13,124 @@ class AdminShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= 820;
+        if (wide) {
+          return const Scaffold(
+            body: Row(
+              children: [
+                SizedBox(width: 258, child: SideNav()),
+                Expanded(child: GroupDashboard()),
+              ],
+            ),
+          );
+        }
+        return Scaffold(
+          appBar: AppBar(title: const BrandWordmark(size: 20)),
+          drawer: const Drawer(
+            backgroundColor: AppColors.navy,
+            child: SideNav(),
+          ),
+          body: const GroupDashboard(),
+        );
+      },
+    );
+  }
+}
+
+/// Left navigation rail (permanent on wide screens, in a drawer on narrow).
+class SideNav extends StatelessWidget {
+  const SideNav({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     final email = AuthService().currentUser?.email ?? '';
-    return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 24,
-        title: const BrandWordmark(size: 20),
-        actions: [
+    return Container(
+      color: AppColors.navy,
+      padding: const EdgeInsets.fromLTRB(16, 26, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: BrandWordmark(size: 22),
+          ),
+          const SizedBox(height: 30),
+          const _NavItem(icon: Icons.business_rounded, label: 'Groups', active: true),
+          const Spacer(),
+          Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
+          const SizedBox(height: 14),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
-                Text(email,
-                    style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7), fontSize: 13)),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: () => AuthService().signOut(),
-                  icon: const Icon(Icons.logout_rounded, size: 18, color: Colors.white),
-                  label: const Text('Sign out', style: TextStyle(color: Colors.white)),
+                CircleAvatar(
+                  radius: 16,
+                  backgroundColor: Colors.white.withValues(alpha: 0.14),
+                  child: Text(
+                    email.isNotEmpty ? email[0].toUpperCase() : '?',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    email,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8), fontSize: 12.5),
+                  ),
+                ),
               ],
             ),
           ),
+          const SizedBox(height: 6),
+          _NavItem(
+            icon: Icons.logout_rounded,
+            label: 'Sign out',
+            onTap: () => AuthService().signOut(),
+          ),
         ],
       ),
-      body: const GroupDashboard(),
+    );
+  }
+}
+
+class _NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback? onTap;
+  const _NavItem({
+    required this.icon,
+    required this.label,
+    this.active = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = active ? Colors.white : Colors.white.withValues(alpha: 0.72);
+    return Material(
+      color: active ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: active ? AppColors.coral : fg),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(
+                      color: fg, fontWeight: FontWeight.w600, fontSize: 14.5)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
