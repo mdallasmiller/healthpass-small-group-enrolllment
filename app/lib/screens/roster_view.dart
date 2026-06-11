@@ -132,9 +132,21 @@ class RosterView extends StatelessWidget {
       context: context,
       builder: (_) => const _AddEmployeeDialog(),
     );
-    if (e != null) {
-      await EmployeeService().add(groupId, e);
-    }
+    if (e == null) return;
+    // Generate the invite code up front so the link is ready immediately.
+    final withCode = e.copyWith(accessCode: generateAccessCode());
+    final id = await EmployeeService().add(groupId, withCode);
+    if (!context.mounted) return;
+    // Show the invite right away: clear confirmation that the link exists.
+    showDialog(
+      context: context,
+      builder: (_) => _InviteDialog(
+        name: withCode.fullName,
+        url: buildEnrollUrl(Uri.base.origin, groupId, id),
+        code: withCode.accessCode,
+        justCreated: true,
+      ),
+    );
   }
 
   Future<void> _importCsv(BuildContext context) async {
@@ -196,12 +208,38 @@ class _InviteDialog extends StatelessWidget {
   final String name;
   final String url;
   final String code;
-  const _InviteDialog({required this.name, required this.url, required this.code});
+  final bool justCreated;
+  const _InviteDialog({
+    required this.name,
+    required this.url,
+    required this.code,
+    this.justCreated = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Enrollment invite'),
+      title: Row(
+        children: [
+          if (justCreated) ...[
+            Container(
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE7F6EE),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_rounded, color: Color(0xFF0A7D4F), size: 20),
+            ),
+            const SizedBox(width: 12),
+          ],
+          Expanded(
+            child: Text(justCreated
+                ? '${name.isEmpty ? 'Employee' : name} added'
+                : 'Enrollment invite'),
+          ),
+        ],
+      ),
       content: SizedBox(
         width: 480,
         child: Column(
@@ -209,8 +247,11 @@ class _InviteDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Send this link and access code to ${name.isEmpty ? 'the employee' : name}. '
-              'They open the link and enter the code to start enrollment.',
+              justCreated
+                  ? 'Their enrollment link and access code are ready. Send both to '
+                      '${name.isEmpty ? 'the employee' : name} to start enrollment.'
+                  : 'Send this link and access code to ${name.isEmpty ? 'the employee' : name}. '
+                      'They open the link and enter the code to start enrollment.',
               style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
             ),
             const SizedBox(height: 20),
@@ -289,7 +330,13 @@ List<Employee> _parseCsv(List<int> bytes) {
     // Skip header / invalid rows (email must look like an address).
     if (!email.contains('@') || !email.contains('.')) continue;
     if (first.isEmpty && last.isEmpty) continue;
-    out.add(Employee(firstName: first, lastName: last, email: email, phone: phone));
+    out.add(Employee(
+      firstName: first,
+      lastName: last,
+      email: email,
+      phone: phone,
+      accessCode: generateAccessCode(),
+    ));
   }
   return out;
 }
@@ -342,12 +389,18 @@ class _EmployeeRow extends StatelessWidget {
           const SizedBox(width: 14),
           if (created.isNotEmpty)
             Text(created, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: 'Invite link',
-            icon: const Icon(Icons.link_rounded, size: 20, color: AppColors.navy),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
             onPressed: onInvite,
+            icon: const Icon(Icons.link_rounded, size: 16),
+            label: const Text('Invite link'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              visualDensity: VisualDensity.compact,
+            ),
           ),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'Remove',
             icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.muted),

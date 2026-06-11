@@ -14,7 +14,11 @@ class EmployeeService {
       .snapshots()
       .map((snap) => snap.docs.map(Employee.fromDoc).toList());
 
-  Future<void> add(String groupId, Employee e) => _col(groupId).add(e.toMap());
+  /// Adds an employee and returns the new document id.
+  Future<String> add(String groupId, Employee e) async {
+    final ref = await _col(groupId).add(e.toMap());
+    return ref.id;
+  }
 
   /// Bulk add (e.g. CSV import) in a single batched write.
   Future<int> addMany(String groupId, List<Employee> employees) async {
