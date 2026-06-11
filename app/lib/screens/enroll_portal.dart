@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:signature/signature.dart';
 import '../models/employee.dart';
 import '../models/group.dart';
+import '../services/enrollment_service.dart';
 import '../theme.dart';
 import '../utils/pricing.dart';
 import '../widgets/ui.dart';
@@ -84,6 +87,42 @@ class _EnrollPortalState extends State<EnrollPortal> {
     if (_step > 0) setState(() => _step--);
   }
 
+  Future<void> _submit(Uint8List? signature, Map<String, bool> acks) async {
+    final data = <String, dynamic>{
+      'personal': {
+        'firstName': _first.text.trim(),
+        'middleName': _middle.text.trim(),
+        'lastName': _last.text.trim(),
+        'dob': _dob.text.trim(),
+        'ssn': _ssn.text.trim(),
+        'address': _address.text.trim(),
+        'tobaccoUser': _tobacco,
+      },
+      'dependents': {'spouse': _hasSpouse, 'children': _children},
+      'medical': {
+        'plan': _plan.name,
+        'level': _plan == MedicalPlan.preventiveCooperative ? _level : null,
+        'tier': _tier.name,
+        'monthly': _medical,
+      },
+      'dental': {
+        'enrolled': _dentalEnrolled,
+        'tier': _dentalTier.name,
+        'monthly': _dental,
+      },
+      'ichra': {'interested': _ichraInterested},
+      'acknowledgements': acks,
+      'totals': {'monthly': _total},
+      'signature': signature != null ? base64Encode(signature) : null,
+    };
+    await EnrollmentService().submit(_g.id!, widget.employee.id!, data);
+    if (mounted) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => EnrollComplete(group: _g, total: _total),
+      ));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return EnrollShell(
@@ -155,7 +194,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
           onChildrenChanged: (v) => setState(() => _dentalChildren = v),
         );
       default:
-        return _ReviewStep(
+        return _ReviewSignStep(
           tier: _tier,
           plan: _plan,
           medical: _medical,
@@ -163,6 +202,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
           dental: _dental,
           ichraInterested: _ichraInterested,
           total: _total,
+          onSubmit: _submit,
         );
     }
   }
@@ -174,12 +214,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
         if (_step > 0)
           OutlinedButton(onPressed: _back, child: const Text('Back')),
         const Spacer(),
-        if (isLast)
-          FilledButton(
-            onPressed: null,
-            child: const Text('Submit (available soon)'),
-          )
-        else
+        if (!isLast)
           FilledButton(onPressed: _next, child: const Text('Continue')),
       ],
     );
@@ -579,7 +614,7 @@ class _DentalStep extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 
-class _ReviewStep extends StatelessWidget {
+class _ReviewSignStep extends StatefulWidget {
   final Tier tier;
   final MedicalPlan plan;
   final num medical;
@@ -587,7 +622,8 @@ class _ReviewStep extends StatelessWidget {
   final num dental;
   final bool ichraInterested;
   final num total;
-  const _ReviewStep({
+  final Future<void> Function(Uint8List? signature, Map<String, bool> acks) onSubmit;
+  const _ReviewSignStep({
     required this.tier,
     required this.plan,
     required this.medical,
@@ -595,7 +631,60 @@ class _ReviewStep extends StatelessWidget {
     required this.dental,
     required this.ichraInterested,
     required this.total,
+    required this.onSubmit,
   });
+
+  @override
+  State<_ReviewSignStep> createState() => _ReviewSignStepState();
+}
+
+class _ReviewSignStepState extends State<_ReviewSignStep> {
+  final _sig = SignatureController(
+    penStrokeWidth: 2.4,
+    penColor: AppColors.navy,
+    exportBackgroundColor: Colors.white,
+  );
+  bool _tobacco = false;
+  bool _preEx = false;
+  bool _deduction = false;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _sig.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirm() async {
+    if (!_tobacco || !_preEx || !_deduction) {
+      setState(() => _error = 'Please accept all acknowledgements to continue.');
+      return;
+    }
+    if (_sig.isEmpty) {
+      setState(() => _error = 'Please sign in the box.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final bytes = await _sig.toPngBytes();
+      await widget.onSubmit(bytes, {
+        'tobacco': _tobacco,
+        'preEx': _preEx,
+        'deduction': _deduction,
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = 'Could not submit your enrollment. Please try again.';
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -605,38 +694,114 @@ class _ReviewStep extends StatelessWidget {
       children: [
         Text('Review & sign', style: theme.textTheme.titleLarge),
         const SizedBox(height: 4),
-        const Text('A quick summary of your selections.',
+        const Text('Confirm your selections, then sign to submit.',
             style: TextStyle(color: AppColors.muted)),
         const SizedBox(height: 20),
-        _row('Coverage tier', tier.label),
-        _row('Medical plan',
-            plan == MedicalPlan.preventiveOnly ? 'Preventive Only' : 'Preventive + Cooperative'),
-        _row('Medical cost', '${money(medical)}/mo'),
-        _row('Dental', dentalEnrolled ? '${money(dental)}/mo' : 'Not enrolled'),
-        if (ichraInterested) _row('ICHRA', 'Specialist will contact you'),
-        const Divider(height: 28),
-        Row(
-          children: [
-            const Expanded(
-              child: Text('Total monthly cost',
-                  style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.navy, fontSize: 16)),
-            ),
-            Text('${money(total)}/mo',
-                style: const TextStyle(
-                    fontWeight: FontWeight.w800, color: AppColors.coralStrong, fontSize: 18)),
-          ],
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.field,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Column(
+            children: [
+              _row('Coverage tier', widget.tier.label),
+              _row(
+                  'Medical plan',
+                  widget.plan == MedicalPlan.preventiveOnly
+                      ? 'Preventive Only'
+                      : 'Preventive + Cooperative'),
+              _row('Medical cost', '${money(widget.medical)}/mo'),
+              _row('Dental',
+                  widget.dentalEnrolled ? '${money(widget.dental)}/mo' : 'Not enrolled'),
+              if (widget.ichraInterested) _row('ICHRA', 'Specialist will contact you'),
+              const Divider(height: 24),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text('Total monthly cost',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, color: AppColors.navy, fontSize: 16)),
+                  ),
+                  Text('${money(widget.total)}/mo',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.coralStrong,
+                          fontSize: 18)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        const _MiniLabel('ACKNOWLEDGEMENTS'),
+        const SizedBox(height: 8),
+        _AckTile(
+          value: _tobacco,
+          text: 'I certify that the tobacco-use information I provided is accurate.',
+          onChanged: (v) => setState(() => _tobacco = v),
+        ),
+        _AckTile(
+          value: _preEx,
+          text: 'I understand that pre-existing condition terms may apply to my coverage.',
+          onChanged: (v) => setState(() => _preEx = v),
+        ),
+        _AckTile(
+          value: _deduction,
+          text: 'I authorize payroll deduction of my share of the monthly premium.',
+          onChanged: (v) => setState(() => _deduction = v),
         ),
         const SizedBox(height: 20),
+        Row(
+          children: [
+            const Expanded(child: _MiniLabel('SIGNATURE')),
+            TextButton.icon(
+              onPressed: () => setState(() => _sig.clear()),
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Clear'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.muted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
         Container(
-          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.coralSoft,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.coralLine),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFCBD4DE), width: 1.5),
           ),
-          child: const Text(
-            'Acknowledgements and e-signature are the next milestone (M7).',
-            style: TextStyle(color: Color(0xFF8A3A33), fontSize: 13),
+          clipBehavior: Clip.antiAlias,
+          child: Signature(controller: _sig, height: 150, backgroundColor: Colors.white),
+        ),
+        const SizedBox(height: 4),
+        const Text('Sign with your mouse or finger.',
+            style: TextStyle(color: AppColors.muted, fontSize: 12)),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.error_outline_rounded, size: 16, color: AppColors.coralStrong),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(_error!,
+                    style: const TextStyle(color: AppColors.coralStrong, fontSize: 13.5)),
+              ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 22),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            onPressed: _busy ? null : _confirm,
+            child: _busy
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white),
+                  )
+                : const Text('Confirm & submit enrollment'),
           ),
         ),
       ],
@@ -644,7 +809,7 @@ class _ReviewStep extends StatelessWidget {
   }
 
   Widget _row(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
             Expanded(child: Text(k, style: const TextStyle(color: AppColors.muted))),
@@ -653,6 +818,82 @@ class _ReviewStep extends StatelessWidget {
           ],
         ),
       );
+}
+
+class _AckTile extends StatelessWidget {
+  final bool value;
+  final String text;
+  final ValueChanged<bool> onChanged;
+  const _AckTile({required this.value, required this.text, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => onChanged(!value),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              value ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+              color: value ? AppColors.coral : AppColors.muted,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Text(text,
+                    style: const TextStyle(color: AppColors.ink, fontSize: 13.5, height: 1.45)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Success screen after a submitted enrollment.
+class EnrollComplete extends StatelessWidget {
+  final Group group;
+  final num total;
+  const EnrollComplete({super.key, required this.group, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return EnrollShell(
+      maxWidth: 480,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE7F6EE),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(Icons.check_circle_rounded, color: Color(0xFF0A7D4F), size: 30),
+          ),
+          const SizedBox(height: 20),
+          Text('Enrollment complete', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Text(
+            'Thanks! Your benefits selections for ${group.name} have been submitted. '
+            'Your estimated cost is ${money(total)}/mo.',
+            style: const TextStyle(color: AppColors.muted, height: 1.55),
+          ),
+          const SizedBox(height: 18),
+          const HelpFooter(),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

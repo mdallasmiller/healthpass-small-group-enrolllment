@@ -1,0 +1,23 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Saves a completed enrollment for an employee.
+///
+/// Dev note: the portal writes directly (anonymous auth). SSN is stored as
+/// entered for now; production moves the write behind a Cloud Function and
+/// encrypts sensitive fields (M9).
+class EnrollmentService {
+  Future<void> submit(
+    String groupId,
+    String employeeId,
+    Map<String, dynamic> data,
+  ) async {
+    final db = FirebaseFirestore.instance;
+    final emp =
+        db.collection('groups').doc(groupId).collection('employees').doc(employeeId);
+    await emp.collection('enrollment').doc('data').set({
+      ...data,
+      'submittedAt': FieldValue.serverTimestamp(),
+    });
+    await emp.update({'status': 'completed'});
+  }
+}

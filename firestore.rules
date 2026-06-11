@@ -44,6 +44,13 @@ service cloud.firestore {
       match /employees/{employeeId} {
         allow read, write: if isAdmin();
         allow get: if isSignedIn();
+        // TEMP (dev): the portal updates its own status and writes its
+        // enrollment record. Production moves this behind a Cloud Function.
+        allow update: if isSignedIn();
+
+        match /enrollment/{doc} {
+          allow read, write: if isSignedIn();
+        }
       }
 
       match /{document=**} {
