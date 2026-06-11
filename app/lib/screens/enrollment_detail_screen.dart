@@ -2,10 +2,13 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import '../models/employee.dart';
 import '../models/group.dart';
 import '../services/enrollment_service.dart';
+import '../services/group_service.dart';
 import '../theme.dart';
+import '../utils/enrollment_pdf.dart';
 import '../utils/pricing.dart';
 import '../widgets/ui.dart';
 
@@ -33,6 +36,24 @@ class EnrollmentDetailScreen extends StatelessWidget {
       };
 
   String _yn(dynamic v) => (v == true) ? 'Yes' : 'No';
+
+  Future<void> _downloadPdf(BuildContext context, Map<String, dynamic> data) async {
+    final group = await GroupService().getGroup(groupId);
+    final submitted = (data['submittedAt'] as Timestamp?)?.toDate();
+    final submittedText =
+        submitted != null ? DateFormat.yMMMd().add_jm().format(submitted) : '';
+    final bytes = await buildEnrollmentPdf(
+      groupName: group?.name ?? '',
+      employee: employee,
+      data: data,
+      submittedText: submittedText,
+    );
+    await Printing.sharePdf(
+      bytes: bytes,
+      filename:
+          '${employee.fullName.isEmpty ? 'enrollment' : employee.fullName} enrollment.pdf',
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,6 +92,7 @@ class EnrollmentDetailScreen extends StatelessWidget {
     final ichra = (data['ichra'] as Map?) ?? {};
     final acks = (data['acknowledgements'] as Map?) ?? {};
     final totals = (data['totals'] as Map?) ?? {};
+    final audit = (data['audit'] as Map?) ?? {};
     final submittedAt = (data['submittedAt'] as Timestamp?)?.toDate();
     final sig = data['signature'] as String?;
 
@@ -119,7 +141,16 @@ class EnrollmentDetailScreen extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton.icon(
+            onPressed: () => _downloadPdf(context, data),
+            icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+            label: const Text('Download PDF'),
+          ),
+        ),
+        const SizedBox(height: 16),
         SectionCard(
           title: 'Personal',
           child: Column(children: [
@@ -136,10 +167,7 @@ class EnrollmentDetailScreen extends StatelessWidget {
         const SizedBox(height: 16),
         SectionCard(
           title: 'Dependents',
-          child: Column(children: [
-            _row('Spouse / partner', _yn(dependents['spouse'])),
-            _row('Children (26 and under)', '${dependents['children'] ?? 0}'),
-          ]),
+          child: _dependents(dependents),
         ),
         const SizedBox(height: 16),
         SectionCard(
@@ -166,10 +194,14 @@ class EnrollmentDetailScreen extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         SectionCard(
-          title: 'Signature',
-          child: sig == null
-              ? const Text('No signature on file.', style: TextStyle(color: AppColors.muted))
-              : Container(
+          title: 'Signature & record',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (sig == null)
+                const Text('No signature on file.', style: TextStyle(color: AppColors.muted))
+              else
+                Container(
                   height: 150,
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -179,10 +211,62 @@ class EnrollmentDetailScreen extends StatelessWidget {
                   clipBehavior: Clip.antiAlias,
                   child: Image.memory(base64Decode(sig), fit: BoxFit.contain),
                 ),
+              const SizedBox(height: 14),
+              _row('Signed at',
+                  submittedAt != null ? DateFormat.yMMMd().add_jms().format(submittedAt) : '-'),
+              _row('E-signature consent', _yn(audit['consentToEsign'])),
+              _row('Document version', '${audit['documentVersion'] ?? '-'}'),
+            ],
+          ),
         ),
         const SizedBox(height: 40),
       ],
     );
+  }
+
+  String _name(Map m) =>
+      '${m['firstName'] ?? ''} ${m['middleName'] ?? ''} ${m['lastName'] ?? ''}'
+          .replaceAll('  ', ' ')
+          .trim();
+
+  Widget _subhead(String t) => Padding(
+        padding: const EdgeInsets.only(top: 10, bottom: 2),
+        child: Text(t,
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, color: AppColors.navy, fontSize: 13)),
+      );
+
+  Widget _dependents(Map dependents) {
+    final spouse = dependents['spouse'];
+    final children = dependents['children'];
+    final rows = <Widget>[];
+
+    if (spouse is Map) {
+      rows.add(_subhead('Spouse / partner'));
+      rows.add(_row('Name', _name(spouse)));
+      rows.add(_row('SSN', '${spouse['ssn'] ?? '-'}'));
+      if ('${spouse['phone'] ?? ''}'.isNotEmpty) rows.add(_row('Phone', '${spouse['phone']}'));
+      if ('${spouse['email'] ?? ''}'.isNotEmpty) rows.add(_row('Email', '${spouse['email']}'));
+    } else {
+      rows.add(_row('Spouse / partner', _yn(spouse)));
+    }
+
+    if (children is List) {
+      if (children.isEmpty) {
+        rows.add(_row('Children', 'None'));
+      }
+      for (var i = 0; i < children.length; i++) {
+        final c = children[i];
+        if (c is! Map) continue;
+        rows.add(_subhead('Child ${i + 1}'));
+        rows.add(_row('Name', _name(c)));
+        rows.add(_row('SSN', '${c['ssn'] ?? '-'}'));
+      }
+    } else {
+      rows.add(_row('Children (26 and under)', '${children ?? 0}'));
+    }
+
+    return Column(children: rows);
   }
 
   Widget _row(String k, String v) => Padding(

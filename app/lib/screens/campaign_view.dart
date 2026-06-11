@@ -31,12 +31,27 @@ class _CampaignViewState extends State<CampaignView> {
   late final _warningDate =
       TextEditingController(text: widget.group.schedule.warningDate);
   late final _endDate = TextEditingController(text: widget.group.schedule.endDate);
+  late final _emailSubjectC = TextEditingController(
+      text: widget.group.templates.emailSubject.isEmpty
+          ? _emailSubject
+          : widget.group.templates.emailSubject);
+  late final _emailBodyC = TextEditingController(
+      text: widget.group.templates.emailBody.isEmpty
+          ? _emailBody
+          : widget.group.templates.emailBody);
+  late final _smsBodyC = TextEditingController(
+      text: widget.group.templates.smsBody.isEmpty
+          ? _emailBody
+          : widget.group.templates.smsBody);
   bool _busy = false;
   bool _sending = false;
 
   @override
   void dispose() {
-    for (final c in [_sendDate, _sendTime, _warningDate, _endDate]) {
+    for (final c in [
+      _sendDate, _sendTime, _warningDate, _endDate,
+      _emailSubjectC, _emailBodyC, _smsBodyC,
+    ]) {
       c.dispose();
     }
     super.dispose();
@@ -52,11 +67,16 @@ class _CampaignViewState extends State<CampaignView> {
           warningDate: _warningDate.text.trim(),
           endDate: _endDate.text.trim(),
         ),
+        templates: MessageTemplates(
+          emailSubject: _emailSubjectC.text.trim(),
+          emailBody: _emailBodyC.text.trim(),
+          smsBody: _smsBodyC.text.trim(),
+        ),
       );
       await GroupService().update(widget.group.id!, updated);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Schedule saved')));
+            .showSnackBar(const SnackBar(content: Text('Saved')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -245,28 +265,38 @@ class _CampaignViewState extends State<CampaignView> {
   Widget _templatesCard() {
     return SectionCard(
       title: 'Messages',
-      subtitle: 'What employees receive. Tokens in [brackets] are filled in automatically.',
+      subtitle: 'What employees receive. Tokens in [brackets] are filled in automatically. Edit as needed.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const _ChannelRow(icon: Icons.mail_outline_rounded, label: 'EMAIL'),
           const SizedBox(height: 10),
-          LabeledField(
-            label: 'Subject',
-            child: _PreviewBox(text: _emailSubject),
-          ),
+          LabeledField(label: 'Subject', child: TextField(controller: _emailSubjectC)),
           const SizedBox(height: 12),
           LabeledField(
             label: 'Body',
-            child: _PreviewBox(text: _emailBody, multiline: true),
+            child: TextField(controller: _emailBodyC, minLines: 5, maxLines: 10),
           ),
           const SizedBox(height: 8),
-          Text('From: ${widget.group.contactEmail.isEmpty ? '[group contact email]' : widget.group.contactEmail}',
-              style: const TextStyle(color: AppColors.muted, fontSize: 12.5)),
+          Text(
+            'From: ${widget.group.contactEmail.isEmpty ? '[group contact email]' : widget.group.contactEmail}',
+            style: const TextStyle(color: AppColors.muted, fontSize: 12.5),
+          ),
           const Divider(height: 30),
           const _ChannelRow(icon: Icons.sms_outlined, label: 'TEXT MESSAGE'),
           const SizedBox(height: 10),
-          _PreviewBox(text: _emailBody, multiline: true),
+          LabeledField(
+            label: 'Body',
+            child: TextField(controller: _smsBodyC, minLines: 4, maxLines: 8),
+          ),
+          const SizedBox(height: 18),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: _busy ? null : _save,
+              child: const Text('Save messages'),
+            ),
+          ),
         ],
       ),
     );
@@ -312,48 +342,6 @@ class _ChannelRow extends StatelessWidget {
                 fontSize: 12,
                 letterSpacing: 0.8)),
       ],
-    );
-  }
-}
-
-/// Shows template text with [merge tokens] highlighted in coral.
-class _PreviewBox extends StatelessWidget {
-  final String text;
-  final bool multiline;
-  const _PreviewBox({required this.text, this.multiline = false});
-
-  @override
-  Widget build(BuildContext context) {
-    final spans = <TextSpan>[];
-    final re = RegExp(r'\[[^\]]+\]');
-    int last = 0;
-    for (final m in re.allMatches(text)) {
-      if (m.start > last) {
-        spans.add(TextSpan(text: text.substring(last, m.start)));
-      }
-      spans.add(TextSpan(
-        text: text.substring(m.start, m.end),
-        style: const TextStyle(color: AppColors.coralStrong, fontWeight: FontWeight.w700),
-      ));
-      last = m.end;
-    }
-    if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.field,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.line),
-      ),
-      child: Text.rich(
-        TextSpan(
-          style: TextStyle(
-              color: AppColors.ink, fontSize: 13.5, height: multiline ? 1.6 : 1.3),
-          children: spans,
-        ),
-      ),
     );
   }
 }

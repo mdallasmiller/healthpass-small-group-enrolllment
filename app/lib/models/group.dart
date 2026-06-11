@@ -168,6 +168,30 @@ class EnrollmentSchedule {
       );
 }
 
+/// Editable email/SMS message templates for the enrollment campaign.
+class MessageTemplates {
+  final String emailSubject;
+  final String emailBody;
+  final String smsBody;
+  const MessageTemplates({
+    this.emailSubject = '',
+    this.emailBody = '',
+    this.smsBody = '',
+  });
+
+  Map<String, dynamic> toMap() => {
+        'emailSubject': emailSubject,
+        'emailBody': emailBody,
+        'smsBody': smsBody,
+      };
+
+  factory MessageTemplates.fromMap(Map<String, dynamic>? m) => MessageTemplates(
+        emailSubject: (m?['emailSubject'] ?? '') as String,
+        emailBody: (m?['emailBody'] ?? '') as String,
+        smsBody: (m?['smsBody'] ?? '') as String,
+      );
+}
+
 class Group {
   final String? id;
   final String name; // employer / group name
@@ -179,6 +203,7 @@ class Group {
   final Map<String, TierRates> medicalRates;
   final DentalConfig dental;
   final EnrollmentSchedule schedule;
+  final MessageTemplates templates;
   final GroupStatus status;
   final DateTime? createdAt;
   final String? createdBy;
@@ -191,6 +216,7 @@ class Group {
     required this.medicalRates,
     this.dental = const DentalConfig(),
     this.schedule = const EnrollmentSchedule(),
+    this.templates = const MessageTemplates(),
     this.status = GroupStatus.draft,
     this.createdAt,
     this.createdBy,
@@ -211,6 +237,7 @@ class Group {
         },
         'dental': dental.toMap(),
         'enrollment': schedule.toMap(),
+        'templates': templates.toMap(),
         'status': status.name,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
@@ -232,6 +259,7 @@ class Group {
       },
       dental: DentalConfig.fromMap(m['dental'] as Map<String, dynamic>?),
       schedule: EnrollmentSchedule.fromMap(m['enrollment'] as Map<String, dynamic>?),
+      templates: MessageTemplates.fromMap(m['templates'] as Map<String, dynamic>?),
       status: GroupStatus.values.firstWhere(
         (s) => s.name == m['status'],
         orElse: () => GroupStatus.draft,
@@ -248,6 +276,7 @@ class Group {
     Map<String, TierRates>? medicalRates,
     DentalConfig? dental,
     EnrollmentSchedule? schedule,
+    MessageTemplates? templates,
     GroupStatus? status,
   }) =>
       Group(
@@ -258,6 +287,7 @@ class Group {
         medicalRates: medicalRates ?? this.medicalRates,
         dental: dental ?? this.dental,
         schedule: schedule ?? this.schedule,
+        templates: templates ?? this.templates,
         status: status ?? this.status,
         createdAt: createdAt,
         createdBy: createdBy,

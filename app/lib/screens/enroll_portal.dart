@@ -42,6 +42,27 @@ class _EnrollPortalState extends State<EnrollPortal> {
   bool _hasSpouse = false;
   int _children = 0;
   MedicalPlan _plan = MedicalPlan.preventiveCooperative;
+
+  // dependent details
+  final _spFirst = TextEditingController();
+  final _spMiddle = TextEditingController();
+  final _spLast = TextEditingController();
+  final _spSsn = TextEditingController();
+  final _spPhone = TextEditingController();
+  final _spEmail = TextEditingController();
+  final List<_ChildCtrls> _childCtrls = [];
+
+  void _setChildren(int n) {
+    setState(() {
+      _children = n.clamp(0, 12);
+      while (_childCtrls.length < _children) {
+        _childCtrls.add(_ChildCtrls());
+      }
+      while (_childCtrls.length > _children) {
+        _childCtrls.removeLast().dispose();
+      }
+    });
+  }
   String _level = '2500';
   bool _ichraInterested = false;
 
@@ -70,7 +91,13 @@ class _EnrollPortalState extends State<EnrollPortal> {
 
   @override
   void dispose() {
-    for (final c in [_first, _middle, _last, _dob, _ssn, _address]) {
+    for (final c in [
+      _first, _middle, _last, _dob, _ssn, _address,
+      _spFirst, _spMiddle, _spLast, _spSsn, _spPhone, _spEmail,
+    ]) {
+      c.dispose();
+    }
+    for (final c in _childCtrls) {
       c.dispose();
     }
     super.dispose();
@@ -87,7 +114,11 @@ class _EnrollPortalState extends State<EnrollPortal> {
     if (_step > 0) setState(() => _step--);
   }
 
-  Future<void> _submit(Uint8List? signature, Map<String, bool> acks) async {
+  Future<void> _submit(
+    Uint8List? signature,
+    Map<String, bool> acks,
+    Map<String, dynamic> audit,
+  ) async {
     final data = <String, dynamic>{
       'personal': {
         'firstName': _first.text.trim(),
@@ -98,7 +129,27 @@ class _EnrollPortalState extends State<EnrollPortal> {
         'address': _address.text.trim(),
         'tobaccoUser': _tobacco,
       },
-      'dependents': {'spouse': _hasSpouse, 'children': _children},
+      'dependents': {
+        'spouse': _hasSpouse
+            ? {
+                'firstName': _spFirst.text.trim(),
+                'middleName': _spMiddle.text.trim(),
+                'lastName': _spLast.text.trim(),
+                'ssn': _spSsn.text.trim(),
+                'phone': _spPhone.text.trim(),
+                'email': _spEmail.text.trim(),
+              }
+            : null,
+        'children': [
+          for (final c in _childCtrls)
+            {
+              'firstName': c.first.text.trim(),
+              'middleName': c.middle.text.trim(),
+              'lastName': c.last.text.trim(),
+              'ssn': c.ssn.text.trim(),
+            }
+        ],
+      },
       'medical': {
         'plan': _plan.name,
         'level': _plan == MedicalPlan.preventiveCooperative ? _level : null,
@@ -112,6 +163,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
       },
       'ichra': {'interested': _ichraInterested},
       'acknowledgements': acks,
+      'audit': audit,
       'totals': {'monthly': _total},
       'signature': signature != null ? base64Encode(signature) : null,
     };
@@ -167,8 +219,15 @@ class _EnrollPortalState extends State<EnrollPortal> {
           tier: _tier,
           medical: _medical,
           ichraInterested: _ichraInterested,
+          spFirst: _spFirst,
+          spMiddle: _spMiddle,
+          spLast: _spLast,
+          spSsn: _spSsn,
+          spPhone: _spPhone,
+          spEmail: _spEmail,
+          childCtrls: _childCtrls,
           onSpouse: (v) => setState(() => _hasSpouse = v),
-          onChildren: (v) => setState(() => _children = v),
+          onChildren: _setChildren,
           onPlan: (p) => setState(() => _plan = p),
           onLevel: (l) => setState(() => _level = l),
           onIchra: (v) => setState(() => _ichraInterested = v),
@@ -404,6 +463,8 @@ class _CoverageStep extends StatelessWidget {
   final Tier tier;
   final num medical;
   final bool ichraInterested;
+  final TextEditingController spFirst, spMiddle, spLast, spSsn, spPhone, spEmail;
+  final List<_ChildCtrls> childCtrls;
   final ValueChanged<bool> onSpouse;
   final ValueChanged<int> onChildren;
   final ValueChanged<MedicalPlan> onPlan;
@@ -419,6 +480,13 @@ class _CoverageStep extends StatelessWidget {
     required this.tier,
     required this.medical,
     required this.ichraInterested,
+    required this.spFirst,
+    required this.spMiddle,
+    required this.spLast,
+    required this.spSsn,
+    required this.spPhone,
+    required this.spEmail,
+    required this.childCtrls,
     required this.onSpouse,
     required this.onChildren,
     required this.onPlan,
@@ -444,6 +512,18 @@ class _CoverageStep extends StatelessWidget {
           onSpouse: onSpouse,
           onChildren: onChildren,
         ),
+        if (hasSpouse) ...[
+          const SizedBox(height: 18),
+          const _MiniLabel('SPOUSE / PARTNER DETAILS'),
+          const SizedBox(height: 10),
+          _spouseFields(),
+        ],
+        for (var i = 0; i < childCtrls.length; i++) ...[
+          const SizedBox(height: 18),
+          _MiniLabel('CHILD ${i + 1} DETAILS'),
+          const SizedBox(height: 10),
+          _childFields(childCtrls[i]),
+        ],
         const SizedBox(height: 24),
         Text('Choose your plan',
             style: theme.textTheme.titleMedium?.copyWith(fontSize: 15)),
@@ -491,6 +571,75 @@ class _CoverageStep extends StatelessWidget {
         _CostSummary(label: 'ESTIMATED MEDICAL COST', amount: medical),
       ],
     );
+  }
+
+  Widget _nameRow(TextEditingController f, TextEditingController m, TextEditingController l) {
+    return Row(
+      children: [
+        Expanded(child: LabeledField(label: 'First name', child: TextField(controller: f))),
+        const SizedBox(width: 10),
+        Expanded(child: LabeledField(label: 'Middle', child: TextField(controller: m))),
+        const SizedBox(width: 10),
+        Expanded(child: LabeledField(label: 'Last name', child: TextField(controller: l))),
+      ],
+    );
+  }
+
+  Widget _ssnField(TextEditingController c) => TextField(
+        controller: c,
+        keyboardType: TextInputType.number,
+        inputFormatters: [_SsnFormatter()],
+        decoration: const InputDecoration(hintText: '###-##-####'),
+      );
+
+  Widget _spouseFields() {
+    return Column(
+      children: [
+        _nameRow(spFirst, spMiddle, spLast),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: LabeledField(label: 'SSN', child: _ssnField(spSsn))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: LabeledField(
+                    label: 'Phone',
+                    child: TextField(
+                        controller: spPhone, keyboardType: TextInputType.phone))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: LabeledField(
+                    label: 'Email',
+                    child: TextField(
+                        controller: spEmail, keyboardType: TextInputType.emailAddress))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _childFields(_ChildCtrls c) {
+    return Column(
+      children: [
+        _nameRow(c.first, c.middle, c.last),
+        const SizedBox(height: 12),
+        LabeledField(label: 'SSN', child: _ssnField(c.ssn)),
+      ],
+    );
+  }
+}
+
+/// Controllers for one child dependent.
+class _ChildCtrls {
+  final first = TextEditingController();
+  final middle = TextEditingController();
+  final last = TextEditingController();
+  final ssn = TextEditingController();
+  void dispose() {
+    first.dispose();
+    middle.dispose();
+    last.dispose();
+    ssn.dispose();
   }
 }
 
@@ -614,6 +763,14 @@ class _DentalStep extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 
+const _ackTobacco = 'I certify that the tobacco-use information I provided is accurate.';
+const _ackPreEx = 'I understand that pre-existing condition terms may apply to my coverage.';
+const _ackDeduction = 'I authorize payroll deduction of my share of the monthly premium.';
+const _esignConsentText =
+    'I agree that my electronic signature below is the legal equivalent of my handwritten '
+    'signature, and I consent to transact electronically.';
+const _enrollmentDocVersion = 'enrollment-v1';
+
 class _ReviewSignStep extends StatefulWidget {
   final Tier tier;
   final MedicalPlan plan;
@@ -622,7 +779,11 @@ class _ReviewSignStep extends StatefulWidget {
   final num dental;
   final bool ichraInterested;
   final num total;
-  final Future<void> Function(Uint8List? signature, Map<String, bool> acks) onSubmit;
+  final Future<void> Function(
+    Uint8List? signature,
+    Map<String, bool> acks,
+    Map<String, dynamic> audit,
+  ) onSubmit;
   const _ReviewSignStep({
     required this.tier,
     required this.plan,
@@ -647,6 +808,7 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
   bool _tobacco = false;
   bool _preEx = false;
   bool _deduction = false;
+  bool _esign = false;
   bool _busy = false;
   String? _error;
 
@@ -657,7 +819,7 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
   }
 
   Future<void> _confirm() async {
-    if (!_tobacco || !_preEx || !_deduction) {
+    if (!_tobacco || !_preEx || !_deduction || !_esign) {
       setState(() => _error = 'Please accept all acknowledgements to continue.');
       return;
     }
@@ -671,11 +833,20 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
     });
     try {
       final bytes = await _sig.toPngBytes();
-      await widget.onSubmit(bytes, {
-        'tobacco': _tobacco,
-        'preEx': _preEx,
-        'deduction': _deduction,
-      });
+      await widget.onSubmit(
+        bytes,
+        {'tobacco': _tobacco, 'preEx': _preEx, 'deduction': _deduction},
+        {
+          'documentVersion': _enrollmentDocVersion,
+          'consentToEsign': true,
+          'esignConsentText': _esignConsentText,
+          'acknowledgementTexts': {
+            'tobacco': _ackTobacco,
+            'preEx': _ackPreEx,
+            'deduction': _ackDeduction,
+          },
+        },
+      );
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -739,18 +910,23 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
         const SizedBox(height: 8),
         _AckTile(
           value: _tobacco,
-          text: 'I certify that the tobacco-use information I provided is accurate.',
+          text: _ackTobacco,
           onChanged: (v) => setState(() => _tobacco = v),
         ),
         _AckTile(
           value: _preEx,
-          text: 'I understand that pre-existing condition terms may apply to my coverage.',
+          text: _ackPreEx,
           onChanged: (v) => setState(() => _preEx = v),
         ),
         _AckTile(
           value: _deduction,
-          text: 'I authorize payroll deduction of my share of the monthly premium.',
+          text: _ackDeduction,
           onChanged: (v) => setState(() => _deduction = v),
+        ),
+        _AckTile(
+          value: _esign,
+          text: _esignConsentText,
+          onChanged: (v) => setState(() => _esign = v),
         ),
         const SizedBox(height: 20),
         Row(
