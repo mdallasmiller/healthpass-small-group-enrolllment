@@ -3,6 +3,7 @@ import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
+import 'campaign_view.dart';
 import 'group_plan_form.dart';
 import 'roster_view.dart';
 
@@ -38,7 +39,7 @@ class GroupDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -100,6 +101,7 @@ class GroupDetailPage extends StatelessWidget {
                   tabs: [
                     Tab(text: 'Plan & rates'),
                     Tab(text: 'Roster'),
+                    Tab(text: 'Enrollment'),
                   ],
                 ),
               ],
@@ -111,6 +113,7 @@ class GroupDetailPage extends StatelessWidget {
               children: [
                 GroupPlanForm(group: group),
                 RosterView(groupId: group.id!),
+                CampaignView(group: group),
               ],
             ),
           ),

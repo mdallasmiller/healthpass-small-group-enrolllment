@@ -125,6 +125,49 @@ class DentalConfig {
 
 enum GroupStatus { draft, active, closed }
 
+/// Enrollment campaign schedule (dates kept as 'dd.mm.yyyy' strings; time free text).
+class EnrollmentSchedule {
+  final String sendDate;
+  final String sendTime;
+  final String warningDate;
+  final String endDate;
+  const EnrollmentSchedule({
+    this.sendDate = '',
+    this.sendTime = '',
+    this.warningDate = '',
+    this.endDate = '',
+  });
+
+  bool get isSet => sendDate.isNotEmpty || endDate.isNotEmpty;
+
+  Map<String, dynamic> toMap() => {
+        'sendDate': sendDate,
+        'sendTime': sendTime,
+        'warningDate': warningDate,
+        'endDate': endDate,
+      };
+
+  factory EnrollmentSchedule.fromMap(Map<String, dynamic>? m) => EnrollmentSchedule(
+        sendDate: (m?['sendDate'] ?? '') as String,
+        sendTime: (m?['sendTime'] ?? '') as String,
+        warningDate: (m?['warningDate'] ?? '') as String,
+        endDate: (m?['endDate'] ?? '') as String,
+      );
+
+  EnrollmentSchedule copyWith({
+    String? sendDate,
+    String? sendTime,
+    String? warningDate,
+    String? endDate,
+  }) =>
+      EnrollmentSchedule(
+        sendDate: sendDate ?? this.sendDate,
+        sendTime: sendTime ?? this.sendTime,
+        warningDate: warningDate ?? this.warningDate,
+        endDate: endDate ?? this.endDate,
+      );
+}
+
 class Group {
   final String? id;
   final String name; // employer / group name
@@ -135,6 +178,7 @@ class Group {
   /// strategy result). Keys are kCoopLevels.
   final Map<String, TierRates> medicalRates;
   final DentalConfig dental;
+  final EnrollmentSchedule schedule;
   final GroupStatus status;
   final DateTime? createdAt;
   final String? createdBy;
@@ -146,6 +190,7 @@ class Group {
     this.ichraEnabled = false,
     required this.medicalRates,
     this.dental = const DentalConfig(),
+    this.schedule = const EnrollmentSchedule(),
     this.status = GroupStatus.draft,
     this.createdAt,
     this.createdBy,
@@ -165,6 +210,7 @@ class Group {
           for (final entry in medicalRates.entries) entry.key: entry.value.toMap()
         },
         'dental': dental.toMap(),
+        'enrollment': schedule.toMap(),
         'status': status.name,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
@@ -185,6 +231,7 @@ class Group {
           l: TierRates.fromMap(rawRates[l] as Map<String, dynamic>?)
       },
       dental: DentalConfig.fromMap(m['dental'] as Map<String, dynamic>?),
+      schedule: EnrollmentSchedule.fromMap(m['enrollment'] as Map<String, dynamic>?),
       status: GroupStatus.values.firstWhere(
         (s) => s.name == m['status'],
         orElse: () => GroupStatus.draft,
@@ -200,6 +247,7 @@ class Group {
     bool? ichraEnabled,
     Map<String, TierRates>? medicalRates,
     DentalConfig? dental,
+    EnrollmentSchedule? schedule,
     GroupStatus? status,
   }) =>
       Group(
@@ -209,6 +257,7 @@ class Group {
         ichraEnabled: ichraEnabled ?? this.ichraEnabled,
         medicalRates: medicalRates ?? this.medicalRates,
         dental: dental ?? this.dental,
+        schedule: schedule ?? this.schedule,
         status: status ?? this.status,
         createdAt: createdAt,
         createdBy: createdBy,
