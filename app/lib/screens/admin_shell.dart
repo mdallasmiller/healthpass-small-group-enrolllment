@@ -57,7 +57,7 @@ class SideNav extends StatelessWidget {
             child: BrandWordmark(size: 22),
           ),
           const SizedBox(height: 30),
-          const _NavItem(icon: Icons.business_rounded, label: 'Groups', active: true),
+          const NavItem(icon: Icons.business_rounded, label: 'Groups', active: true),
           const Spacer(),
           Divider(color: Colors.white.withValues(alpha: 0.12), height: 1),
           const SizedBox(height: 14),
@@ -86,50 +86,12 @@ class SideNav extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          _NavItem(
+          NavItem(
             icon: Icons.logout_rounded,
             label: 'Sign out',
             onTap: () => AuthService().signOut(),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback? onTap;
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    this.active = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = active ? Colors.white : Colors.white.withValues(alpha: 0.72);
-    return Material(
-      color: active ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-          child: Row(
-            children: [
-              Icon(icon, size: 19, color: active ? AppColors.coral : fg),
-              const SizedBox(width: 12),
-              Text(label,
-                  style: TextStyle(
-                      color: fg, fontWeight: FontWeight.w600, fontSize: 14.5)),
-            ],
-          ),
-        ),
       ),
     );
   }

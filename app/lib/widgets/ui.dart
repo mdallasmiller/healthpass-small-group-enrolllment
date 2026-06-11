@@ -191,6 +191,48 @@ class LoadingScreen extends StatelessWidget {
   }
 }
 
+/// A navigation item for the navy sidebars (admin shell + group detail).
+class NavItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool active;
+  final VoidCallback? onTap;
+  final Color iconActiveColor;
+  const NavItem({
+    super.key,
+    required this.icon,
+    required this.label,
+    this.active = false,
+    this.onTap,
+    this.iconActiveColor = AppColors.coral,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = active ? Colors.white : Colors.white.withValues(alpha: 0.72);
+    return Material(
+      color: active ? Colors.white.withValues(alpha: 0.12) : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          child: Row(
+            children: [
+              Icon(icon, size: 19, color: active ? iconActiveColor : fg),
+              const SizedBox(width: 12),
+              Text(label,
+                  style: TextStyle(
+                      color: fg, fontWeight: FontWeight.w600, fontSize: 14.5)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A coral status pill (used for group status).
 class StatusPill extends StatelessWidget {
   final String label;
