@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
@@ -31,6 +32,7 @@ class _CampaignViewState extends State<CampaignView> {
       TextEditingController(text: widget.group.schedule.warningDate);
   late final _endDate = TextEditingController(text: widget.group.schedule.endDate);
   bool _busy = false;
+  bool _sending = false;
 
   @override
   void dispose() {
@@ -61,6 +63,48 @@ class _CampaignViewState extends State<CampaignView> {
     }
   }
 
+  Future<void> _sendInvites() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppDialog(
+        title: 'Send invitations?',
+        content: const Text(
+          'This emails every employee on the roster their enrollment link and '
+          'access code. Continue?',
+          style: TextStyle(color: AppColors.muted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
+          const SizedBox(width: 8),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Send')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _sending = true);
+    try {
+      final res = await FirebaseFunctions.instance
+          .httpsCallable('sendInvites')
+          .call({'groupId': widget.group.id});
+      final data = res.data as Map?;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Sent ${data?['sent'] ?? 0} of ${data?['total'] ?? 0} invitations')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Sending is not enabled yet (requires Cloud Functions on Blaze).')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -73,6 +117,21 @@ class _CampaignViewState extends State<CampaignView> {
             style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted)),
         const SizedBox(height: 20),
         _scheduleCard(),
+        const SizedBox(height: 16),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: _sending ? null : _sendInvites,
+            icon: _sending
+                ? const SizedBox(
+                    height: 18,
+                    width: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2.2, color: Colors.white),
+                  )
+                : const Icon(Icons.send_rounded, size: 18),
+            label: const Text('Send invitations now'),
+          ),
+        ),
         const SizedBox(height: 16),
         _sendingNote(),
         const SizedBox(height: 16),

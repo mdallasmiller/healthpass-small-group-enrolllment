@@ -15,9 +15,51 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { computeQuote, QuoteInput } from "./pricing";
 
 initializeApp();
+
+// Mailgun config. The API key is a secret (set with `firebase functions:secrets:set
+// MAILGUN_API_KEY`). Domain/from/region/app URL are non-secret deploy params.
+const MAILGUN_API_KEY = defineSecret("MAILGUN_API_KEY");
+const MAILGUN_DOMAIN = defineString("MAILGUN_DOMAIN", { default: "" });
+const MAILGUN_FROM = defineString("MAILGUN_FROM", { default: "" });
+const MAILGUN_REGION = defineString("MAILGUN_REGION", { default: "us" });
+const APP_BASE_URL = defineString("APP_BASE_URL", {
+  default: "https://healthpass-enrollment.web.app",
+});
+
+const _codeChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function generateAccessCode(len = 6): string {
+  let s = "";
+  for (let i = 0; i < len; i++) {
+    s += _codeChars[Math.floor(Math.random() * _codeChars.length)];
+  }
+  return s;
+}
+
+function inviteBody(
+  first: string,
+  sendDate: string,
+  endDate: string,
+  url: string,
+  code: string
+): string {
+  return (
+    `Hello ${first || "there"},\n\n` +
+    "You can now enroll in your new health benefit through HealthPass and Health " +
+    "Access Solutions. Our secure enrollment portal will gather your information " +
+    "and your plan selection.\n\n" +
+    `Enrollment begins ${sendDate || "today"} and will end on ${endDate || "the close date"}. ` +
+    "Detailed information about the plan and the total cost to you will be presented " +
+    "in the enrollment portal.\n\n" +
+    "If you experience any issues, please email the HealthPass team at " +
+    "enrollment@joinhealthpass.com.\n\n" +
+    `Begin enrollment: ${url}\n` +
+    `When prompted, use the following access code: ${code}\n`
+  );
+}
 
 /**
  * Grant the caller the first admin slot. Only succeeds when no admin exists
@@ -60,4 +102,82 @@ export const computeQuoteFn = onCall((request) => {
   } catch (e) {
     throw new HttpsError("failed-precondition", (e as Error).message);
   }
+});
+
+/**
+ * Sends each rostered employee their enrollment invite (link + access code) via
+ * Mailgun. Admins only. Generates an access code if one is missing and records
+ * invite.emailSentAt per employee.
+ *
+ * Requires the Blaze plan to deploy, MAILGUN_API_KEY secret set, and
+ * MAILGUN_DOMAIN configured. A Mailgun sandbox domain only delivers to
+ * authorized recipients.
+ */
+export const sendInvites = onCall({ secrets: [MAILGUN_API_KEY] }, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+
+  const db = getFirestore();
+  const adminDoc = await db.collection("admins").doc(uid).get();
+  if (!adminDoc.exists) throw new HttpsError("permission-denied", "Admins only.");
+
+  const groupId = (request.data?.groupId ?? "") as string;
+  if (!groupId) throw new HttpsError("invalid-argument", "Missing groupId.");
+
+  const domain = MAILGUN_DOMAIN.value();
+  if (!domain) {
+    throw new HttpsError("failed-precondition", "MAILGUN_DOMAIN is not configured.");
+  }
+
+  const groupRef = db.collection("groups").doc(groupId);
+  const groupSnap = await groupRef.get();
+  if (!groupSnap.exists) throw new HttpsError("not-found", "Group not found.");
+  const group = groupSnap.data() ?? {};
+  const schedule = (group.enrollment ?? {}) as Record<string, string>;
+
+  const empsSnap = await groupRef.collection("employees").get();
+
+  const apiBase =
+    MAILGUN_REGION.value().toLowerCase() === "eu"
+      ? "https://api.eu.mailgun.net"
+      : "https://api.mailgun.net";
+  const from = MAILGUN_FROM.value() || `HealthPass Enrollment <postmaster@${domain}>`;
+  const auth = "Basic " + Buffer.from(`api:${MAILGUN_API_KEY.value()}`).toString("base64");
+
+  let sent = 0;
+  const errors: string[] = [];
+
+  for (const doc of empsSnap.docs) {
+    const e = doc.data();
+    if (!e.email) continue;
+
+    let code = e.accessCode as string | undefined;
+    if (!code) {
+      code = generateAccessCode();
+      await doc.ref.update({ accessCode: code });
+    }
+
+    const url = `${APP_BASE_URL.value()}/?g=${groupId}&e=${doc.id}`;
+    const params = new URLSearchParams({
+      from,
+      to: `${e.firstName ?? ""} ${e.lastName ?? ""} <${e.email}>`.trim(),
+      subject: "ENROLL NOW: Your Health Benefit through HealthPass + Health Access",
+      text: inviteBody(e.firstName ?? "", schedule.sendDate ?? "", schedule.endDate ?? "", url, code),
+    });
+
+    const res = await fetch(`${apiBase}/v3/${domain}/messages`, {
+      method: "POST",
+      headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
+
+    if (res.ok) {
+      sent++;
+      await doc.ref.update({ "invite.emailSentAt": FieldValue.serverTimestamp() });
+    } else {
+      errors.push(`${e.email}: HTTP ${res.status}`);
+    }
+  }
+
+  return { sent, total: empsSnap.size, errors };
 });
