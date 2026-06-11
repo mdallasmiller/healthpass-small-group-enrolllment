@@ -71,6 +71,10 @@ class GroupDashboard extends StatelessWidget {
                       const Eyebrow('Admin'),
                       const SizedBox(height: 6),
                       Text('Groups', style: theme.textTheme.headlineMedium),
+                      const SizedBox(height: 4),
+                      Text('Configure rates and invite employees to enroll.',
+                          style: theme.textTheme.bodyMedium
+                              ?.copyWith(color: AppColors.muted)),
                     ],
                   ),
                 ),
