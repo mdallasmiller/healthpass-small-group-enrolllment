@@ -39,26 +39,30 @@ function generateAccessCode(len = 6): string {
   return s;
 }
 
-function inviteBody(
-  first: string,
-  sendDate: string,
-  endDate: string,
-  url: string,
-  code: string
+const DEFAULT_EMAIL_SUBJECT =
+  "ENROLL NOW: Your Health Benefit through HealthPass + Health Access";
+const DEFAULT_EMAIL_BODY =
+  "Hello [first name] You can now enroll in your new health benefit through HealthPass " +
+  "and Health Access Solutions. Our secure enrollment portal will gather your " +
+  "information and your plan selection. Enrollment begins today, [Send Date], and will " +
+  "end on [End Date]. Detailed information about the plan and the total cost to the " +
+  "employee will be presented in this enrollment portal. If you experience any issues, " +
+  "please email the HealthPass team at enrollment@joinhealthpass.com. " +
+  "[Begin Enrollment button] [unique group URL]. When prompted, use the following " +
+  "access code: [access code]";
+
+/** Replaces [merge tokens] in a template with the employee's values. */
+function fillTokens(
+  text: string,
+  v: { firstName: string; sendDate: string; endDate: string; url: string; code: string }
 ): string {
-  return (
-    `Hello ${first || "there"},\n\n` +
-    "You can now enroll in your new health benefit through HealthPass and Health " +
-    "Access Solutions. Our secure enrollment portal will gather your information " +
-    "and your plan selection.\n\n" +
-    `Enrollment begins ${sendDate || "today"} and will end on ${endDate || "the close date"}. ` +
-    "Detailed information about the plan and the total cost to you will be presented " +
-    "in the enrollment portal.\n\n" +
-    "If you experience any issues, please email the HealthPass team at " +
-    "enrollment@joinhealthpass.com.\n\n" +
-    `Begin enrollment: ${url}\n` +
-    `When prompted, use the following access code: ${code}\n`
-  );
+  return text
+    .replace(/\[first name\]/gi, v.firstName || "there")
+    .replace(/\[send date\]/gi, v.sendDate || "today")
+    .replace(/\[end date\]/gi, v.endDate || "the close date")
+    .replace(/\[begin enrollment button\]/gi, v.url)
+    .replace(/\[unique group url\]/gi, v.url)
+    .replace(/\[access code\]/gi, v.code);
 }
 
 /**
@@ -134,6 +138,9 @@ export const sendInvites = onCall({ secrets: [MAILGUN_API_KEY] }, async (request
   if (!groupSnap.exists) throw new HttpsError("not-found", "Group not found.");
   const group = groupSnap.data() ?? {};
   const schedule = (group.enrollment ?? {}) as Record<string, string>;
+  const templates = (group.templates ?? {}) as Record<string, string>;
+  const subjectTpl = templates.emailSubject || DEFAULT_EMAIL_SUBJECT;
+  const bodyTpl = templates.emailBody || DEFAULT_EMAIL_BODY;
 
   const empsSnap = await groupRef.collection("employees").get();
 
@@ -158,11 +165,18 @@ export const sendInvites = onCall({ secrets: [MAILGUN_API_KEY] }, async (request
     }
 
     const url = `${APP_BASE_URL.value()}/?g=${groupId}&e=${doc.id}`;
+    const tokens = {
+      firstName: (e.firstName ?? "") as string,
+      sendDate: schedule.sendDate ?? "",
+      endDate: schedule.endDate ?? "",
+      url,
+      code,
+    };
     const params = new URLSearchParams({
       from,
       to: `${e.firstName ?? ""} ${e.lastName ?? ""} <${e.email}>`.trim(),
-      subject: "ENROLL NOW: Your Health Benefit through HealthPass + Health Access",
-      text: inviteBody(e.firstName ?? "", schedule.sendDate ?? "", schedule.endDate ?? "", url, code),
+      subject: fillTokens(subjectTpl, tokens),
+      text: fillTokens(bodyTpl, tokens),
     });
 
     const res = await fetch(`${apiBase}/v3/${domain}/messages`, {
