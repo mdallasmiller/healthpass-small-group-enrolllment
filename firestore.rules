@@ -34,6 +34,18 @@ service cloud.firestore {
     match /groups/{groupId} {
       allow read, write: if isAdmin();
 
+      // TEMP (dev): the enrollment portal signs in anonymously and reads a single
+      // group doc (plan config) by id. Listing stays admin-only. In production
+      // this is replaced by a Cloud Function exposing only the needed fields.
+      allow get: if isSignedIn();
+
+      // Portal reads a single employee doc (by id from the invite link) to
+      // validate the access code. Listing the roster stays admin-only.
+      match /employees/{employeeId} {
+        allow read, write: if isAdmin();
+        allow get: if isSignedIn();
+      }
+
       match /{document=**} {
         allow read, write: if isAdmin();
       }

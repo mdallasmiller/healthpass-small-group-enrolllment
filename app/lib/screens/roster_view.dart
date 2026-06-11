@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../models/employee.dart';
 import '../services/employee_service.dart';
 import '../theme.dart';
+import '../utils/codes.dart';
 import '../widgets/ui.dart';
 
 class RosterView extends StatelessWidget {
@@ -68,6 +70,7 @@ class RosterView extends StatelessWidget {
                       _EmployeeRow(
                         employee: employees[i],
                         onDelete: () => EmployeeService().delete(groupId, employees[i].id!),
+                        onInvite: () => _showInvite(context, employees[i]),
                       ),
                     ],
                   ],
@@ -177,6 +180,97 @@ class RosterView extends StatelessWidget {
       );
     }
   }
+
+  Future<void> _showInvite(BuildContext context, Employee e) async {
+    final code = await EmployeeService().ensureAccessCode(groupId, e);
+    final url = buildEnrollUrl(Uri.base.origin, groupId, e.id!);
+    if (!context.mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => _InviteDialog(name: e.fullName, url: url, code: code),
+    );
+  }
+}
+
+class _InviteDialog extends StatelessWidget {
+  final String name;
+  final String url;
+  final String code;
+  const _InviteDialog({required this.name, required this.url, required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Enrollment invite'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Send this link and access code to ${name.isEmpty ? 'the employee' : name}. '
+              'They open the link and enter the code to start enrollment.',
+              style: const TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
+            ),
+            const SizedBox(height: 20),
+            LabeledField(label: 'Enrollment link', child: _CopyBox(text: url)),
+            const SizedBox(height: 16),
+            LabeledField(label: 'Access code', child: _CopyBox(text: code, big: true)),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+            onPressed: () => Navigator.pop(context), child: const Text('Done')),
+      ],
+    );
+  }
+}
+
+class _CopyBox extends StatelessWidget {
+  final String text;
+  final bool big;
+  const _CopyBox({required this.text, this.big = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
+      decoration: BoxDecoration(
+        color: AppColors.field,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: SelectableText(
+              text,
+              style: big
+                  ? const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 3,
+                      color: AppColors.navy)
+                  : const TextStyle(fontSize: 13.5, color: AppColors.ink),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Copy',
+            icon: const Icon(Icons.copy_rounded, size: 18, color: AppColors.muted),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Copied')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Parses CSV bytes into employees. Expected columns (in order):
@@ -203,7 +297,12 @@ List<Employee> _parseCsv(List<int> bytes) {
 class _EmployeeRow extends StatelessWidget {
   final Employee employee;
   final VoidCallback onDelete;
-  const _EmployeeRow({required this.employee, required this.onDelete});
+  final VoidCallback onInvite;
+  const _EmployeeRow({
+    required this.employee,
+    required this.onDelete,
+    required this.onInvite,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -243,6 +342,12 @@ class _EmployeeRow extends StatelessWidget {
           const SizedBox(width: 14),
           if (created.isNotEmpty)
             Text(created, style: theme.textTheme.bodySmall?.copyWith(color: AppColors.muted)),
+          const SizedBox(width: 4),
+          IconButton(
+            tooltip: 'Invite link',
+            icon: const Icon(Icons.link_rounded, size: 20, color: AppColors.navy),
+            onPressed: onInvite,
+          ),
           IconButton(
             tooltip: 'Remove',
             icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppColors.muted),

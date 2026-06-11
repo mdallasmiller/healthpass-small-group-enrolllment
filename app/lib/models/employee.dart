@@ -19,6 +19,7 @@ class Employee {
   final String lastName;
   final String email;
   final String phone;
+  final String accessCode; // invite code for the enrollment link (dev: plaintext)
   final EmployeeStatus status;
   final DateTime? createdAt;
 
@@ -28,6 +29,7 @@ class Employee {
     required this.lastName,
     required this.email,
     this.phone = '',
+    this.accessCode = '',
     this.status = EmployeeStatus.pending,
     this.createdAt,
   });
@@ -39,6 +41,7 @@ class Employee {
         'lastName': lastName,
         'email': email,
         'phone': phone,
+        'accessCode': accessCode,
         'status': status.name,
         'createdAt': createdAt != null
             ? Timestamp.fromDate(createdAt!)
@@ -53,6 +56,7 @@ class Employee {
       lastName: (m['lastName'] ?? '') as String,
       email: (m['email'] ?? '') as String,
       phone: (m['phone'] ?? '') as String,
+      accessCode: (m['accessCode'] ?? '') as String,
       status: EmployeeStatus.values.firstWhere(
         (s) => s.name == m['status'],
         orElse: () => EmployeeStatus.pending,
@@ -66,6 +70,7 @@ class Employee {
     String? lastName,
     String? email,
     String? phone,
+    String? accessCode,
     EmployeeStatus? status,
   }) =>
       Employee(
@@ -74,6 +79,7 @@ class Employee {
         lastName: lastName ?? this.lastName,
         email: email ?? this.email,
         phone: phone ?? this.phone,
+        accessCode: accessCode ?? this.accessCode,
         status: status ?? this.status,
         createdAt: createdAt,
       );

@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
+import '../utils/codes.dart';
 
 /// Firestore CRUD for a group's employee roster (groups/{groupId}/employees).
 class EmployeeService {
@@ -32,4 +33,18 @@ class EmployeeService {
 
   Future<void> delete(String groupId, String id) =>
       _col(groupId).doc(id).delete();
+
+  /// Returns the employee's invite code, generating and saving one if missing.
+  Future<String> ensureAccessCode(String groupId, Employee e) async {
+    if (e.accessCode.isNotEmpty) return e.accessCode;
+    final code = generateAccessCode();
+    await _col(groupId).doc(e.id!).update({'accessCode': code});
+    return code;
+  }
+
+  /// Reads a single employee (used by the enrollment portal to validate).
+  Future<Employee?> getEmployee(String groupId, String employeeId) async {
+    final doc = await _col(groupId).doc(employeeId).get();
+    return doc.exists ? Employee.fromDoc(doc) : null;
+  }
 }
