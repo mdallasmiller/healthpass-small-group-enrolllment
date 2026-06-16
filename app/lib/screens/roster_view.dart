@@ -374,16 +374,16 @@ class RosterView extends StatelessWidget {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Import roster'),
         content: Text(
             'Found ${employees.length} employee${employees.length == 1 ? '' : 's'} to import. Continue?'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Import')),
         ],
       ),
@@ -419,7 +419,7 @@ class RosterView extends StatelessWidget {
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('Import census'),
         content: Text(
           'Found ${employees.length} employee${employees.length == 1 ? '' : 's'}. '
@@ -429,10 +429,10 @@ class RosterView extends StatelessWidget {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Import')),
         ],
       ),

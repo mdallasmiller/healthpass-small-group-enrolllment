@@ -87,7 +87,7 @@ class _CampaignViewState extends State<CampaignView> {
   Future<void> _sendInvites() async {
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AppDialog(
+      builder: (ctx) => AppDialog(
         title: 'Send invitations?',
         content: const Text(
           'This emails every employee on the roster their enrollment link and '
@@ -96,11 +96,11 @@ class _CampaignViewState extends State<CampaignView> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(ctx, false),
               child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
           const SizedBox(width: 8),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(ctx, true),
               child: const Text('Send')),
         ],
       ),
