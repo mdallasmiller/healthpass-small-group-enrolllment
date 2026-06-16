@@ -70,7 +70,7 @@ String _medicalSummary(Map medical) {
 String coopLevelLabelPlain(String level) => level;
 
 // ---------------------------------------------------------------------------
-// ENROLLMENT CENSUS (with elections) — matches the elections template.
+// ENROLLMENT CENSUS (with elections): matches the elections template.
 
 const _censusHeader = [
   'Group Name', 'First Name', 'Middle Name', 'Last Name', 'Relationship',
@@ -152,7 +152,7 @@ String censusCsv(String groupName, List<Map<String, dynamic>> enrollments) {
 }
 
 // ---------------------------------------------------------------------------
-// PAYROLL DEDUCTION REPORT — matches the deduction template.
+// PAYROLL DEDUCTION REPORT: matches the deduction template.
 
 const _deductionHeader = [
   'Employee', 'Medical Plan', 'Medical Plan - Tier',

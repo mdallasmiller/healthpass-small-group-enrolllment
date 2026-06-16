@@ -376,7 +376,7 @@ class RosterView extends StatelessWidget {
     if (fresh.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(
-            'All ${parsed.length} already in the roster — nothing to import.')),
+            'All ${parsed.length} already in the roster. Nothing to import.')),
       );
       return;
     }
@@ -459,7 +459,7 @@ class RosterView extends StatelessWidget {
     if (fresh.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(
-            'All ${parsed.length} already in the roster — nothing to import.')),
+            'All ${parsed.length} already in the roster. Nothing to import.')),
       );
       return;
     }
