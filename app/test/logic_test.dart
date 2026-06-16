@@ -1,9 +1,84 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthpass_enroll/models/group.dart';
 import 'package:healthpass_enroll/utils/pricing.dart';
 import 'package:healthpass_enroll/utils/reports.dart';
+import 'package:healthpass_enroll/utils/roster_import.dart';
 
 void main() {
+  group('CSV imports', () {
+    test('parseRosterCsv: First/Last/Email/Phone, header skipped', () {
+      const csv = 'First Name,Last Name,Email,Phone\n'
+          'Jane,Doe,jane@test.com,5035551234\n'
+          'John,Smith,john@test.com,\n';
+      final emps = parseRosterCsv(utf8.encode(csv));
+      expect(emps.length, 2); // header row skipped (no @ in "Email")
+      expect(emps[0].firstName, 'Jane');
+      expect(emps[0].phone, '5035551234');
+      expect(emps[1].lastName, 'Smith');
+    });
+
+    test('parseRosterCsv: skips rows without a valid email', () {
+      const csv = 'First Name,Last Name,Email,Phone\n'
+          'NoEmail,Person,not-an-email,123\n'
+          'Real,Person,real@test.com,123\n';
+      final emps = parseRosterCsv(utf8.encode(csv));
+      expect(emps.length, 1);
+      expect(emps.single.firstName, 'Real');
+    });
+
+    test('parseCensusCsv: full BenefitZone mapping + eligible', () {
+      const csv =
+          'SSN,First Name,Middle Name,Last Name,Birthdate,Gender,Date of Hire,'
+          'Tobacco Use Y/N,Mobile Phone #,Home Phone #,Email,Address,City,State,'
+          'Zip Code,Job Titles,Benefit Class,Employment Status (PT or FT)\n'
+          '111-22-3333,Sarah,J,Connor,03/15/1985,Female,01/10/2020,No,5035551234,,'
+          'sarah@test.com,500 Pine St,Salem,OR,97301,Manager,Eligible,Full-Time\n';
+      final emps = parseCensusCsv(utf8.encode(csv));
+      expect(emps.length, 1);
+      final s = emps.single;
+      expect(s.firstName, 'Sarah');
+      expect(s.middleName, 'J');
+      expect(s.lastName, 'Connor');
+      expect(s.ssn, '111-22-3333');
+      expect(s.dob, '03/15/1985');
+      expect(s.gender, 'Female');
+      expect(s.dateOfHire, '01/10/2020');
+      expect(s.tobacco, 'No');
+      expect(s.mobilePhone, '5035551234');
+      expect(s.email, 'sarah@test.com');
+      expect(s.addressLine1, '500 Pine St');
+      expect(s.city, 'Salem');
+      expect(s.state, 'OR');
+      expect(s.zip, '97301');
+      expect(s.employmentStatus, 'Full-Time');
+      expect(s.eligible, isTrue);
+    });
+
+    test('parseCensusCsv: Ineligible benefit class -> eligible=false', () {
+      const csv =
+          'SSN,First Name,Middle Name,Last Name,Birthdate,Gender,Date of Hire,'
+          'Tobacco Use Y/N,Mobile Phone #,Home Phone #,Email,Address,City,State,'
+          'Zip Code,Job Titles,Benefit Class,Employment Status (PT or FT)\n'
+          '222-33-4444,Mike,,Smith,07/20/1978,Male,02/01/2019,Yes,5035555678,,'
+          'mike@test.com,12 Oak Ave,Salem,OR,97302,Tech,Ineligible,Part-Time\n';
+      final m = parseCensusCsv(utf8.encode(csv)).single;
+      expect(m.eligible, isFalse);
+      expect(m.employmentStatus, 'Part-Time');
+      expect(m.tobacco, 'Yes');
+    });
+
+    test('parseCensusCsv: header mapping is order-independent', () {
+      const csv = 'Email,Last Name,First Name,SSN,DOB\n'
+          'z@test.com,Zed,Amy,999-88-7777,12/01/1990\n';
+      final e = parseCensusCsv(utf8.encode(csv)).single;
+      expect(e.firstName, 'Amy');
+      expect(e.lastName, 'Zed');
+      expect(e.ssn, '999-88-7777');
+      expect(e.dob, '12/01/1990');
+    });
+  });
+
   group('Age + tier helpers', () {
     test('ageFromDob parses MM/DD/YYYY', () {
       expect(ageFromDob('03/15/1985', asOf: DateTime(2026, 6, 16)), 41);
