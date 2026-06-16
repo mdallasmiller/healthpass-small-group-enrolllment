@@ -1376,9 +1376,12 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
                       ? 'Preventive'
                       : 'Preventive + Cooperative Bundle'),
               _row('Medical Tier', widget.tier.label),
+              _row('Medical Cost',
+                  '${money(widget.medical - widget.tobaccoSurcharge)}/mo'),
               if (widget.group.dental.enabled && widget.dentalEnrolled) ...[
                 _row('Dental Plan', widget.group.dental.planName),
                 _row('Dental Tier', widget.dentalTier.label),
+                _row('Dental Cost', '${money(widget.dental)}/mo'),
               ] else if (widget.group.dental.enabled)
                 _row('Dental Plan', 'Not enrolled'),
               _row('Tobacco Surcharge',
