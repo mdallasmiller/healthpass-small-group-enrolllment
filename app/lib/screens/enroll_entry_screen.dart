@@ -197,11 +197,16 @@ class EnrollShell extends StatelessWidget {
   final Widget child;
   final bool loading;
   final double maxWidth;
+
+  /// When set (admin "Enroll now" preview), shows a back button to exit the
+  /// portal and return to the admin app.
+  final VoidCallback? onClose;
   const EnrollShell({
     super.key,
     required this.child,
     this.loading = false,
     this.maxWidth = 520,
+    this.onClose,
   });
 
   @override
@@ -242,9 +247,41 @@ class EnrollShell extends StatelessWidget {
             SafeArea(
               child: Column(
                 children: [
+                  if (onClose != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 10, top: 8),
+                        child: TextButton.icon(
+                          onPressed: onClose,
+                          icon: const Icon(Icons.arrow_back_rounded,
+                              size: 18, color: Colors.white70),
+                          label: const Text('Back to admin',
+                              style: TextStyle(
+                                  color: Colors.white70, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
                   Padding(
-                    padding: const EdgeInsets.only(top: 36, bottom: 8),
+                    padding: EdgeInsets.only(top: onClose != null ? 4 : 36, bottom: 8),
                     child: Center(child: BrandWordmark(size: 24)),
+                  ),
+                  Center(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.lock_rounded,
+                            size: 13, color: Colors.white.withValues(alpha: 0.7)),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Secure & encrypted',
+                          style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                   ),
                   Expanded(
                     child: Center(

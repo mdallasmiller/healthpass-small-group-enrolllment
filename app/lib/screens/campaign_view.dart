@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
+import '../utils/formatters.dart';
 import '../widgets/ui.dart';
 
 const _emailSubject =
@@ -176,7 +177,9 @@ class _CampaignViewState extends State<CampaignView> {
                   label: 'Send date',
                   child: TextField(
                     controller: _sendDate,
-                    decoration: const InputDecoration(hintText: 'dd.mm.yyyy'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [DateSlashFormatter()],
+                    decoration: const InputDecoration(hintText: 'MM/DD/YYYY'),
                   ),
                 ),
               ),
@@ -201,7 +204,9 @@ class _CampaignViewState extends State<CampaignView> {
                   hint: 'Reminder before the window closes.',
                   child: TextField(
                     controller: _warningDate,
-                    decoration: const InputDecoration(hintText: 'dd.mm.yyyy'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [DateSlashFormatter()],
+                    decoration: const InputDecoration(hintText: 'MM/DD/YYYY'),
                   ),
                 ),
               ),
@@ -211,7 +216,9 @@ class _CampaignViewState extends State<CampaignView> {
                   label: 'End date',
                   child: TextField(
                     controller: _endDate,
-                    decoration: const InputDecoration(hintText: 'dd.mm.yyyy'),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [DateSlashFormatter()],
+                    decoration: const InputDecoration(hintText: 'MM/DD/YYYY'),
                   ),
                 ),
               ),
@@ -252,8 +259,8 @@ class _CampaignViewState extends State<CampaignView> {
           Expanded(
             child: Text(
               'Automated email + SMS sending (Mailgun + Twilio) runs server-side and '
-              'will be enabled once Cloud Functions are deployed. Until then, use the '
-              'Invite link on each employee in the Roster tab to share access manually.',
+              'will be enabled once Cloud Functions are deployed. Until then, use '
+              '"Send link + code" on each employee in the Roster tab to share access manually.',
               style: TextStyle(color: Color(0xFF8A3A33), fontSize: 13, height: 1.5),
             ),
           ),
@@ -313,8 +320,9 @@ class _CampaignViewState extends State<CampaignView> {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Open the Roster tab, choose an employee, and use their Invite link to '
-              'launch the enrollment portal during an in-person session.',
+              'Open the Roster tab, choose an employee, and click "Enroll now" to '
+              'launch the enrollment portal directly during an in-person session '
+              '(no access code required).',
               style: TextStyle(color: AppColors.muted, fontSize: 13.5, height: 1.5),
             ),
           ),

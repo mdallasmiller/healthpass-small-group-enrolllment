@@ -112,7 +112,7 @@ class GroupDetailPage extends StatelessWidget {
             child: TabBarView(
               children: [
                 GroupPlanForm(group: group),
-                RosterView(groupId: group.id!),
+                RosterView(group: group),
                 CampaignView(group: group),
               ],
             ),

@@ -30,6 +30,8 @@ class EnrollmentDetailScreen extends StatelessWidget {
 
   String _tierLabel(String? t) => switch (t) {
         'employeeOnly' => 'Employee Only',
+        'spouse' => 'Employee + Spouse',
+        'child' => 'Employee + Child(ren)',
         'spouseChild' => 'Employee + Spouse/Child(ren)',
         'family' => 'Employee + Family',
         _ => t ?? '-',
@@ -178,6 +180,9 @@ class EnrollmentDetailScreen extends StatelessWidget {
             if (medical['level'] != null)
               _row('Deductible level', coopLevelLabel('${medical['level']}')),
             _row('Medical cost', '${money((medical['monthly'] ?? 0) as num)}/mo'),
+            if (((medical['tobaccoSurcharge'] ?? 0) as num) > 0)
+              _row('Incl. tobacco surcharge',
+                  '${money((medical['tobaccoSurcharge'] ?? 0) as num)}/mo'),
             _row('Dental',
                 (dental['enrolled'] == true) ? '${money((dental['monthly'] ?? 0) as num)}/mo' : 'Not enrolled'),
             _row('ICHRA interest', _yn(ichra['interested'])),

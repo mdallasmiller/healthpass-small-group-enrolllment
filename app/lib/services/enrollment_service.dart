@@ -21,6 +21,22 @@ class EnrollmentService {
     await emp.update({'status': 'completed'});
   }
 
+  /// All submitted enrollments for a group, each as
+  /// {employeeId, employee: {...}, data: {...}}. Used for census + reports.
+  Future<List<Map<String, dynamic>>> getGroupEnrollments(String groupId) async {
+    final db = FirebaseFirestore.instance;
+    final emps =
+        await db.collection('groups').doc(groupId).collection('employees').get();
+    final out = <Map<String, dynamic>>[];
+    for (final e in emps.docs) {
+      final enr = await e.reference.collection('enrollment').doc('data').get();
+      if (enr.exists && enr.data() != null) {
+        out.add({'employeeId': e.id, 'employee': e.data(), 'data': enr.data()!});
+      }
+    }
+    return out;
+  }
+
   /// Reads a submitted enrollment for the admin view (null if not submitted).
   Future<Map<String, dynamic>?> getEnrollment(
     String groupId,

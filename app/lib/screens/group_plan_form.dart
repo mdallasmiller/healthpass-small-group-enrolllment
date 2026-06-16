@@ -3,12 +3,14 @@ import 'package:flutter/services.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
+import '../utils/formatters.dart';
 import '../widgets/ui.dart';
 
-const _tierShort = {
-  Tier.employeeOnly: 'Employee Only',
-  Tier.spouseChild: '+ Spouse/Child(ren)',
-  Tier.family: '+ Family',
+const _tier4Short = {
+  Tier4.employeeOnly: 'Employee Only',
+  Tier4.spouse: '+ Spouse',
+  Tier4.child: '+ Child(ren)',
+  Tier4.family: '+ Family',
 };
 
 /// Embeddable group plan + rates form. Used by the create screen and by the
@@ -32,12 +34,31 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   late final TextEditingController _email;
   bool _ichra = false;
 
+  // HAS form extra fields (string/num kept as text controllers, parsed on save).
+  final Map<String, TextEditingController> _d = {};
+  bool _domesticPartners = false;
+  bool _stacking = false;
+  TobaccoSurchargePayer _tobaccoPayer = TobaccoSurchargePayer.company;
+  late final TextEditingController _tobaccoSurcharge;
+
   late final Map<String, Map<String, TextEditingController>> _medical;
 
   bool _dentalEnabled = false;
-  DentalOption _dentalOption = DentalOption.cooperative;
-  String _dentalLevel = '2500';
+  DentalOption _dentalOption = DentalOption.coop2500;
+  DentalContributionMode _dentalContribMode = DentalContributionMode.voluntary;
+  late final TextEditingController _dentalCompanyContribution;
   late final Map<String, TextEditingController> _dental;
+
+  // Eligibility
+  WaitingPeriod _waitingPeriod = WaitingPeriod.firstFollowingHire;
+
+  // Contribution strategy mode + defined contribution
+  ContributionMode _mode = ContributionMode.employeeFacing;
+  late Set<String> _offered;
+  PayFrequency _payFrequency = PayFrequency.monthly;
+  late final TextEditingController _employerContribution;
+  // band -> level -> tierKey -> controller
+  late final Map<String, Map<String, Map<String, TextEditingController>>> _dc;
 
   GroupStatus _status = GroupStatus.draft;
   bool _busy = false;
@@ -51,6 +72,55 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     _ichra = g?.ichraEnabled ?? false;
     _status = g?.status ?? GroupStatus.draft;
 
+    final det = g?.details ?? const GroupDetails();
+    void put(String k, String v) => _d[k] = TextEditingController(text: v);
+    put('dba', det.dba);
+    put('effectiveDate', det.effectiveDate);
+    put('startDate', det.startDate);
+    put('affiliateCompany', det.affiliateCompany);
+    put('affiliateEmail', det.affiliateEmail);
+    put('refererName', det.refererName);
+    put('eligibilityDefinition', det.eligibilityDefinition);
+    put('waitingPeriodOther', det.waitingPeriodOther);
+    put('producer', det.producer);
+    put('referralPartner', det.referralPartner);
+    put('referer', det.referer);
+    put('taxId', det.taxId);
+    put('businessPhone', det.businessPhone);
+    put('website', det.website);
+    put('fullTimeEmployees', det.fullTimeEmployees);
+    put('addressLine1', det.addressLine1);
+    put('addressLine2', det.addressLine2);
+    put('city', det.city);
+    put('state', det.state);
+    put('zip', det.zip);
+    put('educationDate', det.educationDate);
+    put('educationTime', det.educationTime);
+    put('enrollmentStrategy', det.enrollmentStrategy);
+    put('adminFirstName', det.adminFirstName);
+    put('adminLastName', det.adminLastName);
+    put('adminPhone', det.adminPhone);
+    put('billingFirstName', det.billingFirstName);
+    put('billingLastName', det.billingLastName);
+    put('billingPhone', det.billingPhone);
+    put('billingEmail', det.billingEmail);
+    put('ichraEoTarget', _fmt(det.ichraEoTarget));
+    put('ichraSpouseTarget', _fmt(det.ichraSpouseTarget));
+    put('ichraChildTarget', _fmt(det.ichraChildTarget));
+    put('preventiveVideoUrl', det.preventiveVideoUrl);
+    put('healthVideoUrl', det.healthVideoUrl);
+    put('ichraVideoUrl', det.ichraVideoUrl);
+    put('dentalVideoUrl', det.dentalVideoUrl);
+    put('preventiveDescription', det.preventiveDescription);
+    put('healthDescription', det.healthDescription);
+    put('ichraDescription', det.ichraDescription);
+    put('dentalDescription', det.dentalDescription);
+    put('notes', det.notes);
+    _domesticPartners = det.domesticPartners;
+    _stacking = det.stacking;
+    _tobaccoPayer = g?.tobaccoSurchargePayer ?? TobaccoSurchargePayer.company;
+    _tobaccoSurcharge = TextEditingController(text: _fmt(g?.tobaccoSurcharge ?? 75));
+
     _medical = {
       for (final level in kCoopLevels)
         level: {
@@ -63,10 +133,31 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     final d = g?.dental ?? const DentalConfig();
     _dentalEnabled = d.enabled;
     _dentalOption = d.option;
-    _dentalLevel = d.level;
+    _dentalContribMode = d.contributionMode;
+    _dentalCompanyContribution =
+        TextEditingController(text: _fmt(d.companyContribution));
     _dental = {
-      for (final t in Tier.values)
+      for (final t in Tier4.values)
         t.key: TextEditingController(text: _fmt(d.rates.forTier(t))),
+    };
+    _waitingPeriod = (g?.details ?? const GroupDetails()).waitingPeriod;
+
+    _mode = g?.contributionMode ?? ContributionMode.employeeFacing;
+    _offered = {...(g?.offeredLevels ?? kCoopLevels)};
+    _payFrequency = g?.payFrequency ?? PayFrequency.monthly;
+    final dc = g?.definedContribution ?? DefinedContribution.standard();
+    _employerContribution =
+        TextEditingController(text: _fmt(dc.employerContribution));
+    _dc = {
+      for (final band in kAgeBands)
+        band: {
+          for (final level in kCoopLevels)
+            level: {
+              for (final t in Tier4.values)
+                t.key: TextEditingController(
+                    text: _fmt(dc.ratesFor(band, level).forTier(t))),
+            }
+        }
     };
   }
 
@@ -74,6 +165,11 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   void dispose() {
     _name.dispose();
     _email.dispose();
+    _tobaccoSurcharge.dispose();
+    _dentalCompanyContribution.dispose();
+    for (final c in _d.values) {
+      c.dispose();
+    }
     for (final m in _medical.values) {
       for (final c in m.values) {
         c.dispose();
@@ -81,6 +177,14 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     }
     for (final c in _dental.values) {
       c.dispose();
+    }
+    _employerContribution.dispose();
+    for (final band in _dc.values) {
+      for (final level in band.values) {
+        for (final c in level.values) {
+          c.dispose();
+        }
+      }
     }
     super.dispose();
   }
@@ -97,14 +201,86 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         family: _parse(m[Tier.family.key]!.text),
       );
 
+  Tier4Rates _rates4From(Map<String, TextEditingController> m) => Tier4Rates(
+        employeeOnly: _parse(m[Tier4.employeeOnly.key]!.text),
+        spouse: _parse(m[Tier4.spouse.key]!.text),
+        child: _parse(m[Tier4.child.key]!.text),
+        family: _parse(m[Tier4.family.key]!.text),
+      );
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
+      String t(String k) => _d[k]!.text.trim();
+      final details = GroupDetails(
+        dba: t('dba'),
+        effectiveDate: t('effectiveDate'),
+        startDate: t('startDate'),
+        affiliateCompany: t('affiliateCompany'),
+        affiliateEmail: t('affiliateEmail'),
+        producer: t('producer'),
+        referralPartner: t('referralPartner'),
+        referer: t('referer'),
+        refererName: t('refererName'),
+        eligibilityDefinition: t('eligibilityDefinition'),
+        waitingPeriod: _waitingPeriod,
+        waitingPeriodOther: t('waitingPeriodOther'),
+        taxId: t('taxId'),
+        businessPhone: t('businessPhone'),
+        website: t('website'),
+        fullTimeEmployees: t('fullTimeEmployees'),
+        addressLine1: t('addressLine1'),
+        addressLine2: t('addressLine2'),
+        city: t('city'),
+        state: t('state'),
+        zip: t('zip'),
+        educationDate: t('educationDate'),
+        educationTime: t('educationTime'),
+        enrollmentStrategy: t('enrollmentStrategy'),
+        adminFirstName: t('adminFirstName'),
+        adminLastName: t('adminLastName'),
+        adminPhone: t('adminPhone'),
+        billingFirstName: t('billingFirstName'),
+        billingLastName: t('billingLastName'),
+        billingPhone: t('billingPhone'),
+        billingEmail: t('billingEmail'),
+        domesticPartners: _domesticPartners,
+        stacking: _stacking,
+        ichraEoTarget: _parse(t('ichraEoTarget')),
+        ichraSpouseTarget: _parse(t('ichraSpouseTarget')),
+        ichraChildTarget: _parse(t('ichraChildTarget')),
+        healthVideoUrl: t('healthVideoUrl'),
+        ichraVideoUrl: t('ichraVideoUrl'),
+        dentalVideoUrl: t('dentalVideoUrl'),
+        healthDescription: t('healthDescription'),
+        ichraDescription: t('ichraDescription'),
+        dentalDescription: t('dentalDescription'),
+        notes: t('notes'),
+      );
+
+      final definedContribution = DefinedContribution(
+        employerContribution: _parse(_employerContribution.text),
+        rates: {
+          for (final band in kAgeBands)
+            band: {
+              for (final level in kCoopLevels)
+                level: _rates4From(_dc[band]![level]!)
+            }
+        },
+      );
+
       final group = (widget.group ?? Group.empty()).copyWith(
         name: _name.text.trim(),
         contactEmail: _email.text.trim(),
         ichraEnabled: _ichra,
+        tobaccoSurcharge: _parse(_tobaccoSurcharge.text),
+        tobaccoSurchargePayer: _tobaccoPayer,
+        details: details,
+        contributionMode: _mode,
+        offeredLevels: kCoopLevels.where(_offered.contains).toList(),
+        definedContribution: definedContribution,
+        payFrequency: _payFrequency,
         status: _status,
         medicalRates: {
           for (final level in kCoopLevels) level: _ratesFrom(_medical[level]!)
@@ -112,8 +288,9 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         dental: DentalConfig(
           enabled: _dentalEnabled,
           option: _dentalOption,
-          level: _dentalOption == DentalOption.cooperative ? '2500' : _dentalLevel,
-          rates: _ratesFrom(_dental),
+          rates: _rates4From(_dental),
+          contributionMode: _dentalContribMode,
+          companyContribution: _parse(_dentalCompanyContribution.text),
         ),
       );
 
@@ -146,9 +323,25 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         children: [
           _detailsCard(),
           const SizedBox(height: 16),
+          _businessCard(),
+          const SizedBox(height: 16),
+          _contactsCard(),
+          const SizedBox(height: 16),
+          _eligibilityCard(),
+          const SizedBox(height: 16),
           _medicalCard(),
           const SizedBox(height: 16),
+          _rateOptionsCard(),
+          const SizedBox(height: 16),
           _dentalCard(),
+          if (_ichra) ...[
+            const SizedBox(height: 16),
+            _ichraTargetsCard(),
+          ],
+          const SizedBox(height: 16),
+          _videosCard(),
+          const SizedBox(height: 16),
+          _notesCard(),
           const SizedBox(height: 24),
           Row(
             children: [
@@ -183,6 +376,308 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     );
   }
 
+  /// One text field bound to a _d[key] controller.
+  Widget _text(
+    String key,
+    String label, {
+    String? hint,
+    TextInputType? type,
+    List<TextInputFormatter>? formatters,
+    String? Function(String?)? validator,
+  }) {
+    return LabeledField(
+      label: label,
+      child: TextFormField(
+        controller: _d[key],
+        keyboardType: type,
+        inputFormatters: formatters,
+        validator: validator,
+        decoration: InputDecoration(hintText: hint, isDense: true),
+      ),
+    );
+  }
+
+  /// A MM/DD/YYYY date field.
+  Widget _dateText(String key, String label) => _text(
+        key,
+        label,
+        hint: 'MM/DD/YYYY',
+        type: TextInputType.number,
+        formatters: [DateSlashFormatter()],
+        validator: optionalDateValidator,
+      );
+
+  /// A row of fields that wraps on narrow screens.
+  Widget _fieldRow(List<Widget> fields) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < fields.length; i++) ...[
+          Expanded(child: fields[i]),
+          if (i != fields.length - 1) const SizedBox(width: 12),
+        ],
+      ],
+    );
+  }
+
+  Widget _businessCard() {
+    return SectionCard(
+      title: 'Group details',
+      subtitle: 'Employer, affiliate and company information.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _GroupLabel('GROUP DETAILS'),
+          const SizedBox(height: 10),
+          _fieldRow([
+            _text('dba', 'DBA'),
+            _dateText('effectiveDate', 'Effective date'),
+          ]),
+          const SizedBox(height: 16),
+          _fieldRow([
+            _text('taxId', 'Tax ID',
+                hint: '12-3456789',
+                type: TextInputType.number,
+                formatters: [taxIdChars]),
+            _text('fullTimeEmployees', 'Total full-time employees',
+                type: TextInputType.number, formatters: [digitsOnly]),
+          ]),
+          const Divider(height: 32),
+          const _GroupLabel('AFFILIATE + REFERER'),
+          const SizedBox(height: 10),
+          _fieldRow([
+            _text('affiliateCompany', 'Affiliate company'),
+            _text('affiliateEmail', 'Affiliate contact email',
+                type: TextInputType.emailAddress, validator: optionalEmailValidator),
+          ]),
+          const SizedBox(height: 16),
+          _fieldRow([
+            _text('referralPartner', 'Referral partner'),
+            _text('refererName', 'Referer name'),
+          ]),
+          const Divider(height: 32),
+          const _GroupLabel('COMPANY INFORMATION'),
+          const SizedBox(height: 10),
+          _fieldRow([
+            _text('website', 'Company website', type: TextInputType.url),
+            _text('businessPhone', 'Company phone',
+                type: TextInputType.phone, formatters: [phoneChars]),
+          ]),
+          const SizedBox(height: 16),
+          _text('addressLine1', 'Company address'),
+          const SizedBox(height: 16),
+          _text('addressLine2', 'Address line 2'),
+          const SizedBox(height: 16),
+          _fieldRow([
+            _text('city', 'City'),
+            _text('state', 'State'),
+            _text('zip', 'Zip',
+                type: TextInputType.number, formatters: [digitsOnly]),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _eligibilityCard() {
+    return SectionCard(
+      title: 'Eligibility',
+      subtitle: 'How the company defines benefit eligibility.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LabeledField(
+            label: 'How does the company define benefit eligibility?',
+            child: TextFormField(
+              controller: _d['eligibilityDefinition'],
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                  hintText: 'e.g. Full-time employees working 30+ hours/week'),
+            ),
+          ),
+          const SizedBox(height: 18),
+          LabeledField(
+            label: 'New-hire waiting period',
+            child: _Segmented<WaitingPeriod>(
+              values: WaitingPeriod.values,
+              selected: _waitingPeriod,
+              labelOf: (w) => w.label,
+              onChanged: (w) => setState(() => _waitingPeriod = w),
+            ),
+          ),
+          if (_waitingPeriod == WaitingPeriod.other) ...[
+            const SizedBox(height: 14),
+            _text('waitingPeriodOther', 'Other (describe)'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _contactsCard() {
+    return SectionCard(
+      title: 'Contacts',
+      subtitle: 'Admin and billing contacts.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _GroupLabel('ADMIN CONTACT'),
+          const SizedBox(height: 10),
+          _fieldRow([
+            _text('adminFirstName', 'First name'),
+            _text('adminLastName', 'Last name'),
+          ]),
+          const SizedBox(height: 16),
+          _fieldRow([
+            LabeledField(
+              label: 'Email (sender for invitations)',
+              child: TextFormField(
+                controller: _email,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(hintText: 'hr@acme.com', isDense: true),
+                validator: (v) =>
+                    (v == null || !v.contains('@')) ? 'Enter a valid email.' : null,
+              ),
+            ),
+            _text('adminPhone', 'Phone',
+                type: TextInputType.phone, formatters: [phoneChars]),
+          ]),
+          const Divider(height: 32),
+          const _GroupLabel('BILLING CONTACT'),
+          const SizedBox(height: 10),
+          _fieldRow([
+            _text('billingFirstName', 'First name'),
+            _text('billingLastName', 'Last name'),
+          ]),
+          const SizedBox(height: 16),
+          _fieldRow([
+            _text('billingEmail', 'Email',
+                type: TextInputType.emailAddress, validator: optionalEmailValidator),
+            _text('billingPhone', 'Phone',
+                type: TextInputType.phone, formatters: [phoneChars]),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _rateOptionsCard() {
+    return SectionCard(
+      title: 'Rate options',
+      subtitle: 'Surcharge and rate rules from the HAS form.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LabeledField(
+            label: 'Tobacco surcharge (per tobacco user, monthly)',
+            hint: 'Applied per tobacco user (employee and/or spouse) on a Cooperative plan.',
+            child: _money(_tobaccoSurcharge),
+          ),
+          const SizedBox(height: 16),
+          LabeledField(
+            label: 'Who will pay the tobacco surcharge?',
+            hint: 'If Company, the charge is hidden from the employee but kept on the deduction report.',
+            child: _Segmented<TobaccoSurchargePayer>(
+              values: TobaccoSurchargePayer.values,
+              selected: _tobaccoPayer,
+              labelOf: (p) => p.label,
+              onChanged: (p) => setState(() => _tobaccoPayer = p),
+            ),
+          ),
+          const SizedBox(height: 18),
+          _SwitchRow(
+            title: 'Domestic partners',
+            subtitle: 'Domestic partners are treated as eligible dependents.',
+            value: _domesticPartners,
+            onChanged: (v) => setState(() => _domesticPartners = v),
+          ),
+          const SizedBox(height: 16),
+          _SwitchRow(
+            title: 'Stacking',
+            subtitle: 'Allow stacking of coverage.',
+            value: _stacking,
+            onChanged: (v) => setState(() => _stacking = v),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ichraTargetsCard() {
+    return SectionCard(
+      title: 'ICHRA Target Employee Rate',
+      subtitle: 'Estimated monthly cost shown to the employee at each tier.',
+      child: _fieldRow([
+        LabeledField(label: 'Employee', child: _money(_d['ichraEoTarget']!)),
+        LabeledField(label: 'Spouse', child: _money(_d['ichraSpouseTarget']!)),
+        LabeledField(label: 'Child', child: _money(_d['ichraChildTarget']!)),
+      ]),
+    );
+  }
+
+  Widget _videosCard() {
+    return SectionCard(
+      title: 'Product content',
+      subtitle:
+          'Per step: a description (Markdown supported: # headings, **bold**, lists, '
+          '[links](url), ![image](url)) and a video URL. Shown to employees in the portal.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _GroupLabel('PREVENTIVE'),
+          const SizedBox(height: 10),
+          _markdownField('preventiveDescription'),
+          const SizedBox(height: 12),
+          _text('preventiveVideoUrl', 'Video URL', hint: 'https://...', type: TextInputType.url),
+          const Divider(height: 32),
+          const _GroupLabel('PREVENTIVE + COOPERATIVE BUNDLE'),
+          const SizedBox(height: 10),
+          _markdownField('healthDescription'),
+          const SizedBox(height: 12),
+          _text('healthVideoUrl', 'Video URL', hint: 'https://...', type: TextInputType.url),
+          const Divider(height: 32),
+          const _GroupLabel('ICHRA'),
+          const SizedBox(height: 10),
+          _markdownField('ichraDescription'),
+          const SizedBox(height: 12),
+          _text('ichraVideoUrl', 'Video URL', hint: 'https://...', type: TextInputType.url),
+          const Divider(height: 32),
+          const _GroupLabel('DENTAL'),
+          const SizedBox(height: 10),
+          _markdownField('dentalDescription'),
+          const SizedBox(height: 12),
+          _text('dentalVideoUrl', 'Video URL', hint: 'https://...', type: TextInputType.url),
+        ],
+      ),
+    );
+  }
+
+  Widget _markdownField(String key) => LabeledField(
+        label: 'Description',
+        child: TextFormField(
+          controller: _d[key],
+          minLines: 3,
+          maxLines: 10,
+          decoration: const InputDecoration(
+            hintText: '## Heading\\n\\nYour description here. **Bold**, lists, links…',
+          ),
+        ),
+      );
+
+  Widget _notesCard() {
+    return SectionCard(
+      title: 'Notes',
+      subtitle: 'Internal notes for this group.',
+      child: TextFormField(
+        controller: _d['notes'],
+        minLines: 3,
+        maxLines: 6,
+        decoration: const InputDecoration(hintText: 'Anything worth recording…'),
+      ),
+    );
+  }
+
   Widget _detailsCard() {
     return SectionCard(
       title: 'Group details',
@@ -196,18 +691,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
               decoration: const InputDecoration(hintText: 'Acme Corp'),
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Group name is required.' : null,
-            ),
-          ),
-          const SizedBox(height: 18),
-          LabeledField(
-            label: 'Contact email',
-            hint: 'Used as the sender for enrollment invitations.',
-            child: TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(hintText: 'hr@acme.com'),
-              validator: (v) =>
-                  (v == null || !v.contains('@')) ? 'Enter a valid email.' : null,
             ),
           ),
           const SizedBox(height: 20),
@@ -234,9 +717,85 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
 
   Widget _medicalCard() {
     return SectionCard(
-      title: 'Contribution strategy (medical rates)',
-      subtitle: 'Employee-facing monthly rates per cooperative level and tier.',
-      child: _RatesGrid(controllers: _medical, money: _money),
+      title: 'Contribution strategy',
+      subtitle: 'How medical pricing is presented to employees.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Segmented<ContributionMode>(
+            values: ContributionMode.values,
+            selected: _mode,
+            labelOf: (m) => m == ContributionMode.employeeFacing
+                ? 'Employee-facing price'
+                : 'Defined contribution',
+            onChanged: (m) => setState(() => _mode = m),
+          ),
+          const SizedBox(height: 18),
+          const _GroupLabel('OFFERED DEDUCTIBLE LEVELS'),
+          const SizedBox(height: 10),
+          _offeredToggles(),
+          const SizedBox(height: 18),
+          if (_mode == ContributionMode.employeeFacing)
+            _RatesGrid(controllers: _medical, money: _money, offered: _offered)
+          else ...[
+            LabeledField(
+              label: 'Employer contribution (monthly, per employee)',
+              hint: 'Subtracted from the age-banded rate to get the employee deduction.',
+              child: _money(_employerContribution),
+            ),
+            const SizedBox(height: 18),
+            _DcGrid(controllers: _dc, money: _money),
+          ],
+          const Divider(height: 32),
+          LabeledField(
+            label: 'Payroll frequency',
+            hint: 'Drives the per-pay-period deduction shown to employees.',
+            child: _Segmented<PayFrequency>(
+              values: PayFrequency.values,
+              selected: _payFrequency,
+              labelOf: (p) => p.label,
+              onChanged: (p) => setState(() => _payFrequency = p),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _offeredToggles() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: kCoopLevels.map((l) {
+        final on = _offered.contains(l);
+        return InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => setState(() => on ? _offered.remove(l) : _offered.add(l)),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: on ? AppColors.coral : Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                  color: on ? AppColors.coral : const Color(0xFFCBD4DE), width: 1.5),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(on ? Icons.check_circle_rounded : Icons.circle_outlined,
+                    size: 16, color: on ? Colors.white : AppColors.muted),
+                const SizedBox(width: 6),
+                Text(coopLevelLabel(l),
+                    style: TextStyle(
+                        color: on ? Colors.white : AppColors.navy,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5)),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -256,24 +815,42 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 LabeledField(
-                  label: 'Option',
+                  label: 'Plan',
                   child: _Segmented<DentalOption>(
                     values: DentalOption.values,
                     selected: _dentalOption,
                     labelOf: (o) => o.label,
-                    onChanged: (o) => setState(() {
-                      _dentalOption = o;
-                      if (o == DentalOption.cooperative) _dentalLevel = '2500';
-                    }),
+                    onChanged: (o) => setState(() => _dentalOption = o),
                   ),
                 ),
-                if (_dentalOption == DentalOption.cooperative) ...[
-                  const SizedBox(height: 10),
-                  Text('Cooperative auto-fills level \$2.5K.',
-                      style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
-                ],
                 const SizedBox(height: 20),
+                const _GroupLabel('TIER RATES (MONTHLY)'),
+                const SizedBox(height: 10),
                 _TierRow(controllers: _dental, money: _money),
+                const Divider(height: 32),
+                LabeledField(
+                  label: 'Contribution',
+                  child: _Segmented<DentalContributionMode>(
+                    values: DentalContributionMode.values,
+                    selected: _dentalContribMode,
+                    labelOf: (m) => m.label,
+                    onChanged: (m) => setState(() => _dentalContribMode = m),
+                  ),
+                ),
+                if (_dentalContribMode == DentalContributionMode.voluntary) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                      'Voluntary: the employee pays the tier rate above. (Sample 2500: '
+                      'EO \$35 / +Spouse \$70 / +Child \$75 / +Family \$100.)',
+                      style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
+                ] else ...[
+                  const SizedBox(height: 14),
+                  LabeledField(
+                    label: 'Company contribution (monthly)',
+                    hint: 'Subtracted from each tier rate to get the employee cost.',
+                    child: _money(_dentalCompanyContribution),
+                  ),
+                ],
               ],
             ),
     );
@@ -296,7 +873,12 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
 class _RatesGrid extends StatelessWidget {
   final Map<String, Map<String, TextEditingController>> controllers;
   final Widget Function(TextEditingController) money;
-  const _RatesGrid({required this.controllers, required this.money});
+  final Set<String> offered;
+  const _RatesGrid({
+    required this.controllers,
+    required this.money,
+    required this.offered,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +887,11 @@ class _RatesGrid extends StatelessWidget {
         _headerRow(),
         const SizedBox(height: 8),
         for (final level in kCoopLevels) ...[
-          _levelRow(level),
+          // Levels not offered are grayed out (and not collected from employees).
+          Opacity(
+            opacity: offered.contains(level) ? 1.0 : 0.4,
+            child: _levelRow(level),
+          ),
           if (level != kCoopLevels.last) const SizedBox(height: 12),
         ],
       ],
@@ -371,23 +957,112 @@ class _TierRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget field(Tier t) => Expanded(
+    Widget field(Tier4 t) => Expanded(
           child: LabeledField(
-            label: _tierShort[t]!,
+            label: _tier4Short[t]!,
             child: money(controllers[t.key]!),
           ),
         );
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        field(Tier.employeeOnly),
-        const SizedBox(width: 12),
-        field(Tier.spouseChild),
-        const SizedBox(width: 12),
-        field(Tier.family),
+        for (var i = 0; i < Tier4.values.length; i++) ...[
+          field(Tier4.values[i]),
+          if (i != Tier4.values.length - 1) const SizedBox(width: 10),
+        ],
       ],
     );
   }
+}
+
+/// Age-banded rate grid for defined contribution: one block per age band, with
+/// columns per deductible level and rows per tier.
+class _DcGrid extends StatelessWidget {
+  final Map<String, Map<String, Map<String, TextEditingController>>> controllers;
+  final Widget Function(TextEditingController) money;
+  const _DcGrid({required this.controllers, required this.money});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final band in kAgeBands) ...[
+          _bandBlock(band),
+          if (band != kAgeBands.last) const SizedBox(height: 14),
+        ],
+      ],
+    );
+  }
+
+  Widget _bandBlock(String band) {
+    final lvls = controllers[band]!;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.field,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Age $band',
+              style: const TextStyle(fontWeight: FontWeight.w800, color: AppColors.navy)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const SizedBox(width: 96),
+              for (final l in kCoopLevels) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(coopLevelLabel(l),
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ],
+          ),
+          for (final t in Tier4.values)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: Text(_tier4Short[t]!,
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            color: AppColors.navy,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                  for (final l in kCoopLevels) ...[
+                    const SizedBox(width: 8),
+                    Expanded(child: money(lvls[l]![t.key]!)),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupLabel extends StatelessWidget {
+  final String text;
+  const _GroupLabel(this.text);
+  @override
+  Widget build(BuildContext context) => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text,
+            style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8)),
+      );
 }
 
 class _SwitchRow extends StatelessWidget {

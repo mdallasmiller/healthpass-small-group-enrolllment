@@ -19,6 +19,8 @@ String _planLabel(String? p) => switch (p) {
 
 String _tierLabel(String? t) => switch (t) {
       'employeeOnly' => 'Employee Only',
+      'spouse' => 'Employee + Spouse',
+      'child' => 'Employee + Child(ren)',
       'spouseChild' => 'Employee + Spouse/Child(ren)',
       'family' => 'Employee + Family',
       _ => t ?? '-',

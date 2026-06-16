@@ -4,16 +4,26 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import '../models/employee.dart';
+import '../models/group.dart';
 import '../services/employee_service.dart';
+import '../services/enrollment_service.dart';
+import '../services/group_service.dart';
 import '../theme.dart';
 import '../utils/codes.dart';
+import '../utils/formatters.dart';
+import '../utils/reports.dart';
+import '../utils/web_download.dart';
 import '../widgets/ui.dart';
+import 'enroll_portal.dart';
 import 'enrollment_detail_screen.dart';
 
 class RosterView extends StatelessWidget {
-  final String groupId;
-  const RosterView({super.key, required this.groupId});
+  final Group group;
+  const RosterView({super.key, required this.group});
+
+  String get groupId => group.id!;
 
   @override
   Widget build(BuildContext context) {
@@ -41,10 +51,27 @@ class RosterView extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (group.status == GroupStatus.draft)
+                  OutlinedButton.icon(
+                    onPressed: () => _finalize(context),
+                    icon: const Icon(Icons.verified_rounded, size: 18),
+                    label: const Text('Finalize group'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF0A7D4F),
+                      side: const BorderSide(color: Color(0xFF9ED9BC), width: 1.5),
+                    ),
+                  ),
+                if (group.status == GroupStatus.draft) const SizedBox(width: 10),
+                OutlinedButton.icon(
+                  onPressed: () => _importCensus(context),
+                  icon: const Icon(Icons.table_chart_outlined, size: 18),
+                  label: const Text('Import census'),
+                ),
+                const SizedBox(width: 10),
                 OutlinedButton.icon(
                   onPressed: () => _importCsv(context),
                   icon: const Icon(Icons.upload_file_rounded, size: 18),
-                  label: const Text('Import CSV'),
+                  label: const Text('Import roster'),
                 ),
                 const SizedBox(width: 10),
                 FilledButton.icon(
@@ -55,6 +82,12 @@ class RosterView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
+            if (employees.isNotEmpty) ...[
+              _legend(),
+              const SizedBox(height: 12),
+              _reportsBar(context),
+              const SizedBox(height: 12),
+            ],
             if (snap.connectionState == ConnectionState.waiting)
               const Padding(
                 padding: EdgeInsets.only(top: 60),
@@ -72,6 +105,10 @@ class RosterView extends StatelessWidget {
                         employee: employees[i],
                         onDelete: () => EmployeeService().delete(groupId, employees[i].id!),
                         onInvite: () => _showInvite(context, employees[i]),
+                        onOpen: () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => EnrollPortal(
+                              group: group, employee: employees[i], adminMode: true),
+                        )),
                         onView: employees[i].status == EmployeeStatus.completed
                             ? () => Navigator.of(context).push(MaterialPageRoute(
                                   builder: (_) => EnrollmentDetailScreen(
@@ -89,6 +126,131 @@ class RosterView extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _reportsBar(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(right: 4),
+            child: Text('Finalize / reports',
+                style: TextStyle(fontWeight: FontWeight.w800, color: AppColors.navy)),
+          ),
+          _reportBtn('Census CSV', Icons.table_view_rounded,
+              () => _exportCensus(context, pdf: false)),
+          _reportBtn('Census PDF', Icons.picture_as_pdf_outlined,
+              () => _exportCensus(context, pdf: true)),
+          _reportBtn('Deductions CSV', Icons.table_view_rounded,
+              () => _exportDeduction(context, pdf: false)),
+          _reportBtn('Deductions PDF', Icons.picture_as_pdf_outlined,
+              () => _exportDeduction(context, pdf: true)),
+          _DentalCountChip(groupId: groupId),
+        ],
+      ),
+    );
+  }
+
+  Widget _reportBtn(String label, IconData icon, VoidCallback onTap) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>?> _loadEnrollments(BuildContext context) async {
+    final enr = await EnrollmentService().getGroupEnrollments(groupId);
+    if (enr.isEmpty && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No submitted enrollments yet.')),
+      );
+      return null;
+    }
+    return enr;
+  }
+
+  Future<void> _exportCensus(BuildContext context, {required bool pdf}) async {
+    final enr = await _loadEnrollments(context);
+    if (enr == null) return;
+    final safe = group.name.isEmpty ? 'group' : group.name;
+    if (pdf) {
+      await Printing.sharePdf(
+          bytes: await censusPdf(group.name, enr), filename: '$safe census.pdf');
+    } else {
+      downloadText('$safe census.csv', censusCsv(group.name, enr));
+    }
+  }
+
+  Future<void> _exportDeduction(BuildContext context, {required bool pdf}) async {
+    final enr = await _loadEnrollments(context);
+    if (enr == null) return;
+    final safe = group.name.isEmpty ? 'group' : group.name;
+    if (pdf) {
+      await Printing.sharePdf(
+          bytes: await deductionPdf(group.name, enr),
+          filename: '$safe deduction report.pdf');
+    } else {
+      downloadText('$safe deduction report.csv', deductionCsv(enr));
+    }
+  }
+
+  Widget _legend() {
+    Widget item(IconData icon, String bold, String rest) => Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: AppColors.navy),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    style: const TextStyle(
+                        color: AppColors.muted, fontSize: 12.5, height: 1.4),
+                    children: [
+                      TextSpan(
+                          text: bold,
+                          style: const TextStyle(
+                              color: AppColors.navy, fontWeight: FontWeight.w700)),
+                      TextSpan(text: rest),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.field,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Row(
+        children: [
+          item(Icons.play_circle_outline_rounded, 'Enroll now',
+              ': open the portal here, in person. No access code needed.'),
+          const SizedBox(width: 20),
+          item(Icons.link_rounded, 'Send link + code',
+              ': copy the employee\'s link + code to email/text them. They enter the code to start.'),
+        ],
+      ),
     );
   }
 
@@ -118,9 +280,15 @@ class RosterView extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 OutlinedButton.icon(
+                  onPressed: () => _importCensus(context),
+                  icon: const Icon(Icons.table_chart_outlined, size: 18),
+                  label: const Text('Import census'),
+                ),
+                const SizedBox(width: 10),
+                OutlinedButton.icon(
                   onPressed: () => _importCsv(context),
                   icon: const Icon(Icons.upload_file_rounded, size: 18),
-                  label: const Text('Import CSV'),
+                  label: const Text('Import roster'),
                 ),
                 const SizedBox(width: 10),
                 FilledButton.icon(
@@ -134,6 +302,35 @@ class RosterView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _finalize(BuildContext context) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Finalize group?'),
+        content: Text(
+          'This marks "${group.name}" as active and ready for enrollment. '
+          'You can still edit it afterwards.',
+          style: const TextStyle(color: AppColors.muted, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Finalize')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await GroupService().update(group.id!, group.copyWith(status: GroupStatus.active));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Group finalized. Status set to Active')),
+      );
+    }
   }
 
   Future<void> _addEmployee(BuildContext context) async {
@@ -198,6 +395,55 @@ class RosterView extends StatelessWidget {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Imported $count employees')),
+      );
+    }
+  }
+
+  Future<void> _importCensus(BuildContext context) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+    final bytes = result?.files.single.bytes;
+    if (bytes == null) return;
+
+    final employees = _parseCensus(bytes);
+    if (!context.mounted) return;
+    if (employees.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No valid rows found in the census.')),
+      );
+      return;
+    }
+    final ineligible = employees.where((e) => !e.eligible).length;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Import census'),
+        content: Text(
+          'Found ${employees.length} employee${employees.length == 1 ? '' : 's'}. '
+          'Their demographics will auto-load into the enrollment portal.'
+          '${ineligible > 0 ? '\n\n$ineligible marked ineligible (no invitation will be sent).' : ''}',
+          style: const TextStyle(height: 1.5),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.muted))),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Import')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final count = await EmployeeService().addMany(groupId, employees);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Imported $count employees from census')),
       );
     }
   }
@@ -349,15 +595,143 @@ List<Employee> _parseCsv(List<int> bytes) {
   return out;
 }
 
+/// Parses a rich Enrollment Census CSV (BenefitZone-style) into employees,
+/// mapping columns by header name. Marks benefit-class "ineligible" rows.
+List<Employee> _parseCensus(List<int> bytes) {
+  final text = utf8.decode(bytes, allowMalformed: true);
+  final rows = const CsvToListConverter(eol: '\n', shouldParseNumbers: false)
+      .convert(text);
+  if (rows.isEmpty) return [];
+  final header = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+  int col(List<String> aliases) {
+    for (var i = 0; i < header.length; i++) {
+      for (final a in aliases) {
+        if (header[i] == a || header[i].contains(a)) return i;
+      }
+    }
+    return -1;
+  }
+
+  final cSsn = col(['ssn', 'social']);
+  final cFirst = col(['first name', 'first']);
+  final cMiddle = col(['middle']);
+  final cLast = col(['last name', 'last']);
+  final cDob = col(['birthdate', 'date of birth', 'dob', 'birth']);
+  final cGender = col(['gender', 'sex']);
+  final cHire = col(['date of hire', 'hire']);
+  final cTobacco = col(['tobacco']);
+  final cMobile = col(['mobile']);
+  final cHome = col(['home phone']);
+  final cPhone = col(['phone']);
+  final cEmail = col(['email']);
+  final cAddr = col(['address']);
+  final cCity = col(['city']);
+  final cState = col(['state']);
+  final cZip = col(['zip']);
+  final cJob = col(['job']);
+  final cBenefit = col(['benefit class']);
+  final cEmp = col(['employment status', 'employee status', 'pt or ft', 'full-time']);
+
+  String at(List row, int i) =>
+      (i >= 0 && i < row.length) ? row[i].toString().trim() : '';
+
+  final out = <Employee>[];
+  for (var r = 1; r < rows.length; r++) {
+    final row = rows[r];
+    final first = at(row, cFirst);
+    final last = at(row, cLast);
+    if (first.isEmpty && last.isEmpty) continue;
+    final benefit = at(row, cBenefit);
+    final bl = benefit.toLowerCase();
+    final eligible = !(bl.contains('not eligible') || bl.contains('ineligible'));
+    final mobile = at(row, cMobile);
+    out.add(Employee(
+      firstName: first,
+      middleName: at(row, cMiddle),
+      lastName: last,
+      email: at(row, cEmail),
+      phone: mobile.isNotEmpty ? mobile : at(row, cPhone),
+      accessCode: generateAccessCode(),
+      ssn: at(row, cSsn),
+      dob: at(row, cDob),
+      gender: at(row, cGender),
+      dateOfHire: at(row, cHire),
+      tobacco: at(row, cTobacco),
+      mobilePhone: mobile,
+      homePhone: at(row, cHome),
+      addressLine1: at(row, cAddr),
+      city: at(row, cCity),
+      state: at(row, cState),
+      zip: at(row, cZip),
+      jobTitle: at(row, cJob),
+      benefitClass: benefit,
+      employmentStatus: at(row, cEmp),
+      eligible: eligible,
+    ));
+  }
+  return out;
+}
+
+/// Shows how many submitted enrollments elected dental coverage.
+class _DentalCountChip extends StatefulWidget {
+  final String groupId;
+  const _DentalCountChip({required this.groupId});
+  @override
+  State<_DentalCountChip> createState() => _DentalCountChipState();
+}
+
+class _DentalCountChipState extends State<_DentalCountChip> {
+  String? _text;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final enr = await EnrollmentService().getGroupEnrollments(widget.groupId);
+    final dental = enr.where((e) {
+      final d = ((e['data'] as Map)['dental'] as Map?);
+      return d != null && d['enrolled'] == true;
+    }).length;
+    if (mounted) setState(() => _text = 'Dental elected: $dental of ${enr.length}');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_text == null) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.coralSoft,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.medical_services_outlined, size: 15, color: AppColors.coralStrong),
+          const SizedBox(width: 6),
+          Text(_text!,
+              style: const TextStyle(
+                  color: AppColors.coralStrong, fontWeight: FontWeight.w700, fontSize: 12.5)),
+        ],
+      ),
+    );
+  }
+}
+
 class _EmployeeRow extends StatelessWidget {
   final Employee employee;
   final VoidCallback onDelete;
   final VoidCallback onInvite;
+  final VoidCallback onOpen;
   final VoidCallback? onView;
   const _EmployeeRow({
     required this.employee,
     required this.onDelete,
     required this.onInvite,
+    required this.onOpen,
     this.onView,
   });
 
@@ -395,6 +769,21 @@ class _EmployeeRow extends StatelessWidget {
               ],
             ),
           ),
+          if (!employee.eligible) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFDECEC),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('Ineligible',
+                  style: TextStyle(
+                      color: Color(0xFFB42318),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5)),
+            ),
+            const SizedBox(width: 8),
+          ],
           _statusPill(employee.status),
           const SizedBox(width: 14),
           if (created.isNotEmpty)
@@ -412,14 +801,31 @@ class _EmployeeRow extends StatelessWidget {
               ),
             ),
           if (onView != null) const SizedBox(width: 4),
-          OutlinedButton.icon(
-            onPressed: onInvite,
-            icon: const Icon(Icons.link_rounded, size: 16),
-            label: const Text('Invite link'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              visualDensity: VisualDensity.compact,
+          Tooltip(
+            message: 'Enroll in person now: opens the portal directly, no access code needed.',
+            child: TextButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.play_circle_outline_rounded, size: 16),
+              label: const Text('Enroll now'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.navy,
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: 'Copy the employee\'s personal link + access code to send to them.',
+            child: OutlinedButton.icon(
+              onPressed: onInvite,
+              icon: const Icon(Icons.link_rounded, size: 16),
+              label: const Text('Send link + code'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
           ),
           const SizedBox(width: 4),
@@ -548,6 +954,7 @@ class _AddEmployeeDialogState extends State<_AddEmployeeDialog> {
                 child: TextFormField(
                   controller: _phone,
                   keyboardType: TextInputType.phone,
+                  inputFormatters: [phoneChars],
                   decoration: const InputDecoration(hintText: '(555) 123-4567'),
                 ),
               ),

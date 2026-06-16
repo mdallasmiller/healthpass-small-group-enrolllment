@@ -157,6 +157,7 @@ export const sendInvites = onCall({ secrets: [MAILGUN_API_KEY] }, async (request
   for (const doc of empsSnap.docs) {
     const e = doc.data();
     if (!e.email) continue;
+    if (e.eligible === false) continue; // benefit class ineligible -> no invite
 
     let code = e.accessCode as string | undefined;
     if (!code) {
