@@ -1,11 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:printing/printing.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
 import '../utils/formatters.dart';
 import '../utils/group_pdf.dart';
+import '../utils/web_download.dart';
 import '../widgets/ui.dart';
 
 const _tier4Short = {
@@ -290,10 +290,8 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     try {
       final group = _composeGroup();
       final safe = group.name.trim().isEmpty ? 'group' : group.name.trim();
-      await Printing.sharePdf(
-        bytes: await buildGroupInfoPdf(group),
-        filename: '$safe setup.pdf',
-      );
+      final bytes = await buildGroupInfoPdf(group);
+      downloadBytes('$safe setup.pdf', bytes, mime: 'application/pdf');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
