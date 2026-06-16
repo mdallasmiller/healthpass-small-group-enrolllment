@@ -2067,7 +2067,7 @@ class _PlanActions extends StatelessWidget {
   void _showReadMore(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
+      builder: (dialogCtx) => Dialog(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
           child: Column(
@@ -2102,7 +2102,8 @@ class _PlanActions extends StatelessWidget {
                 child: Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                      onPressed: () => Navigator.pop(context), child: const Text('Close')),
+                      onPressed: () => Navigator.pop(dialogCtx),
+                      child: const Text('Close')),
                 ),
               ),
             ],
@@ -2115,7 +2116,7 @@ class _PlanActions extends StatelessWidget {
   void _showVideo(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (_) => Dialog(
+      builder: (dialogCtx) => Dialog(
         backgroundColor: Colors.black,
         insetPadding: const EdgeInsets.all(24),
         child: ConstrainedBox(
@@ -2126,7 +2127,7 @@ class _PlanActions extends StatelessWidget {
               Align(
                 alignment: Alignment.centerRight,
                 child: IconButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(dialogCtx),
                   icon: const Icon(Icons.close_rounded, color: Colors.white),
                 ),
               ),
