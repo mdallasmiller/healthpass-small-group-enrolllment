@@ -864,10 +864,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const _GroupLabel('TIER RATES (MONTHLY) · FIXED'),
-                const SizedBox(height: 10),
-                _dentalRatesDisplay(),
-                const Divider(height: 32),
                 LabeledField(
                   label: 'Contribution',
                   child: _Segmented<DentalContributionMode>(
@@ -880,8 +876,7 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                 if (_dentalContribMode == DentalContributionMode.voluntary) ...[
                   const SizedBox(height: 10),
                   Text(
-                      'Voluntary: the employee pays the fixed tier rate above '
-                      '(EO \$35 / +Spouse \$70 / +Child \$75 / +Family \$100).',
+                      'Voluntary: the employee pays the full fixed tier rate.',
                       style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
                 ] else ...[
                   const SizedBox(height: 14),
@@ -893,46 +888,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                 ],
               ],
             ),
-    );
-  }
-
-  /// Read-only display of the fixed dental tier rates (35 / 70 / 75 / 100).
-  Widget _dentalRatesDisplay() {
-    Widget cell(Tier4 t) => Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_tier4Short[t]!.toUpperCase(),
-                  style: const TextStyle(
-                      color: AppColors.muted,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4)),
-              const SizedBox(height: 6),
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                decoration: BoxDecoration(
-                  color: AppColors.field,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.line),
-                ),
-                child: Text('\$${kStaticDentalRates.forTier(t).toInt()}',
-                    style: const TextStyle(
-                        color: AppColors.navy, fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-        );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < Tier4.values.length; i++) ...[
-          cell(Tier4.values[i]),
-          if (i != Tier4.values.length - 1) const SizedBox(width: 10),
-        ],
-      ],
     );
   }
 
