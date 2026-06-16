@@ -119,7 +119,8 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     _domesticPartners = det.domesticPartners;
     _stacking = det.stacking;
     _tobaccoPayer = g?.tobaccoSurchargePayer ?? TobaccoSurchargePayer.company;
-    _tobaccoSurcharge = TextEditingController(text: _fmt(g?.tobaccoSurcharge ?? 75));
+    // Tobacco surcharge is a fixed $75; the field is read-only.
+    _tobaccoSurcharge = TextEditingController(text: '75');
 
     _medical = {
       for (final level in kCoopLevels)
@@ -274,7 +275,7 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         name: _name.text.trim(),
         contactEmail: _email.text.trim(),
         ichraEnabled: _ichra,
-        tobaccoSurcharge: _parse(_tobaccoSurcharge.text),
+        tobaccoSurcharge: 75, // fixed
         tobaccoSurchargePayer: _tobaccoPayer,
         details: details,
         contributionMode: _mode,
@@ -571,8 +572,15 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         children: [
           LabeledField(
             label: 'Tobacco surcharge (per tobacco user, monthly)',
-            hint: 'Applied per tobacco user (employee and/or spouse) on a Cooperative plan.',
-            child: _money(_tobaccoSurcharge),
+            hint: 'Fixed at \$75 per tobacco user on a Cooperative plan.',
+            child: TextFormField(
+              controller: _tobaccoSurcharge,
+              enabled: false,
+              decoration: const InputDecoration(
+                prefixText: '\$ ',
+                isDense: true,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           LabeledField(
