@@ -56,10 +56,21 @@ class _EnrollPortalState extends State<EnrollPortal> {
   String _sex = '';
   bool _tobacco = false;
 
-  // medical
-  bool _hasSpouse = false;
+  // Dependents are defined once here (the people who exist). Which products
+  // each is actually added to is chosen per-product, in the Coverage and
+  // Dental steps.
+  bool _addingSpouse = false;
   bool _spouseTobacco = false;
+  bool _addingChildren = false;
   int _children = 0;
+
+  // Per-product coverage: which existing dependents are on each plan. Medical
+  // and dental tiers are computed independently from these.
+  bool _spouseOnMedical = false;
+  bool _childrenOnMedical = false;
+  bool _spouseOnDental = false;
+  bool _childrenOnDental = false;
+
   MedicalPlan _plan = MedicalPlan.preventiveCooperative;
 
   // dependent details
@@ -71,24 +82,55 @@ class _EnrollPortalState extends State<EnrollPortal> {
   final _spEmail = TextEditingController();
   final List<_ChildCtrls> _childCtrls = [];
 
-  void _setChildren(int n) {
+  void _applyChildren(int n) {
+    _children = n.clamp(0, 12);
+    while (_childCtrls.length < _children) {
+      _childCtrls.add(_ChildCtrls());
+    }
+    while (_childCtrls.length > _children) {
+      _childCtrls.removeLast().dispose();
+    }
+  }
+
+  void _setChildren(int n) => setState(() => _applyChildren(n));
+
+  /// "Will you be adding a spouse?" — toggles the person on/off. Defaults the
+  /// per-product coverage on when enabled, clears everything when disabled.
+  void _setAddingSpouse(bool v) {
     setState(() {
-      _children = n.clamp(0, 12);
-      while (_childCtrls.length < _children) {
-        _childCtrls.add(_ChildCtrls());
-      }
-      while (_childCtrls.length > _children) {
-        _childCtrls.removeLast().dispose();
+      _addingSpouse = v;
+      if (v) {
+        _spouseOnMedical = true;
+        _spouseOnDental = _g.dental.enabled;
+      } else {
+        _spouseOnMedical = false;
+        _spouseOnDental = false;
+        _spouseTobacco = false;
       }
     });
   }
+
+  /// "Will you be adding children?" — gates the count + per-product coverage.
+  void _setAddingChildren(bool v) {
+    setState(() {
+      _addingChildren = v;
+      if (v) {
+        if (_children == 0) _applyChildren(1);
+        _childrenOnMedical = true;
+        _childrenOnDental = _g.dental.enabled;
+      } else {
+        _applyChildren(0);
+        _childrenOnMedical = false;
+        _childrenOnDental = false;
+      }
+    });
+  }
+
   String _level = '2500';
   bool _ichraInterested = false;
 
   // dental
   bool _dentalEnrolled = false;
-  bool _dentalSpouse = false;
-  int _dentalChildren = 0;
 
   Group get _g => widget.group;
 
@@ -99,8 +141,13 @@ class _EnrollPortalState extends State<EnrollPortal> {
         'Review',
       ];
 
-  Tier get _tier => determineTier(_hasSpouse, _children); // employee-facing 3-tier
-  Tier4 get _tier4 => determineTier4(_hasSpouse, _children);
+  // Children counted toward each product (0 when not added to that product).
+  int get _medicalChildren => _childrenOnMedical ? _children : 0;
+  int get _dentalChildrenCount => _childrenOnDental ? _children : 0;
+
+  Tier get _tier =>
+      determineTier(_spouseOnMedical, _medicalChildren); // employee-facing 3-tier
+  Tier4 get _tier4 => determineTier4(_spouseOnMedical, _medicalChildren);
   int? get _age => ageFromDob(_dob.text);
 
   /// Monthly medical figure for a given deductible level, honoring the group's
@@ -121,7 +168,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
   int get _tobaccoUnits {
     if (_plan != MedicalPlan.preventiveCooperative) return 0;
     var n = _tobacco ? 1 : 0;
-    if (_hasSpouse && _spouseTobacco) n += 1;
+    if (_spouseOnMedical && _spouseTobacco) n += 1;
     return n;
   }
 
@@ -135,7 +182,8 @@ class _EnrollPortalState extends State<EnrollPortal> {
           : 0;
   num get _medical => _medicalBase + _tobaccoSurchargeApplied;
 
-  Tier4 get _dentalTier4 => determineTier4(_dentalSpouse, _dentalChildren);
+  Tier4 get _dentalTier4 =>
+      determineTier4(_spouseOnDental, _dentalChildrenCount);
   num get _dental => _dentalEnrolled ? dentalMonthly(_g, _dentalTier4) : 0;
 
   num get _total => _medical + _dental;
@@ -225,7 +273,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
         'tobaccoUser': _tobacco,
       },
       'dependents': {
-        'spouse': _hasSpouse
+        'spouse': _addingSpouse
             ? {
                 'firstName': _spFirst.text.trim(),
                 'middleName': _spMiddle.text.trim(),
@@ -234,6 +282,8 @@ class _EnrollPortalState extends State<EnrollPortal> {
                 'phone': _spPhone.text.trim(),
                 'email': _spEmail.text.trim(),
                 'tobaccoUser': _spouseTobacco,
+                'onMedical': _spouseOnMedical,
+                'onDental': _spouseOnDental,
               }
             : null,
         'children': [
@@ -250,6 +300,8 @@ class _EnrollPortalState extends State<EnrollPortal> {
         'plan': _plan.name,
         'level': _plan == MedicalPlan.preventiveCooperative ? _level : null,
         'tier': _tier4.name,
+        'spouseCovered': _spouseOnMedical,
+        'childrenCovered': _childrenOnMedical,
         'contributionMode': _g.contributionMode.name,
         'age': _age,
         'tobaccoSurcharge': _tobaccoSurchargeApplied,
@@ -262,11 +314,13 @@ class _EnrollPortalState extends State<EnrollPortal> {
         'payer': _g.tobaccoSurchargePayer.name,
         'employeePortion': _tobaccoSurchargeApplied,
         'employeeTobacco': _tobacco,
-        'spouseTobacco': _hasSpouse && _spouseTobacco,
+        'spouseTobacco': _spouseOnMedical && _spouseTobacco,
       },
       'dental': {
         'enrolled': _dentalEnrolled,
         'tier': _dentalTier4.name,
+        'spouseCovered': _dentalEnrolled && _spouseOnDental,
+        'childrenCovered': _dentalEnrolled && _childrenOnDental,
         'planName': _g.dental.enabled ? _g.dental.planName : '',
         'monthly': _dental,
       },
@@ -329,12 +383,14 @@ class _EnrollPortalState extends State<EnrollPortal> {
           zip: _zip,
           tobacco: _tobacco,
           onTobacco: (v) => setState(() => _tobacco = v),
-          hasSpouse: _hasSpouse,
+          dentalOffered: _g.dental.enabled,
+          addingSpouse: _addingSpouse,
+          onAddingSpouse: _setAddingSpouse,
           spouseTobacco: _spouseTobacco,
-          children: _children,
-          tier4: _tier4,
-          onSpouse: (v) => setState(() => _hasSpouse = v),
           onSpouseTobacco: (v) => setState(() => _spouseTobacco = v),
+          addingChildren: _addingChildren,
+          onAddingChildren: _setAddingChildren,
+          children: _children,
           onChildren: _setChildren,
           spFirst: _spFirst,
           spMiddle: _spMiddle,
@@ -355,6 +411,13 @@ class _EnrollPortalState extends State<EnrollPortal> {
           tobaccoSurcharge: _tobaccoSurchargeApplied,
           ichraInterested: _ichraInterested,
           payFrequency: _g.payFrequency,
+          addingSpouse: _addingSpouse,
+          addingChildren: _addingChildren,
+          spouseOnMedical: _spouseOnMedical,
+          childrenOnMedical: _childrenOnMedical,
+          medicalTier: _tier4,
+          onSpouseOnMedical: (v) => setState(() => _spouseOnMedical = v),
+          onChildrenOnMedical: (v) => setState(() => _childrenOnMedical = v),
           onPlan: (p) => setState(() => _plan = p),
           onLevel: (l) => setState(() => _level = l),
           onIchra: (v) => setState(() => _ichraInterested = v),
@@ -363,21 +426,23 @@ class _EnrollPortalState extends State<EnrollPortal> {
         return _DentalStep(
           group: _g,
           enrolled: _dentalEnrolled,
-          spouse: _dentalSpouse,
-          children: _dentalChildren,
+          addingSpouse: _addingSpouse,
+          addingChildren: _addingChildren,
+          spouseOnDental: _spouseOnDental,
+          childrenOnDental: _childrenOnDental,
           tier: _dentalTier4,
           dental: _dental,
           total: _total,
           onEnrolled: (v) => setState(() {
             _dentalEnrolled = v;
             if (v) {
-              // sensible default: mirror medical dependents
-              _dentalSpouse = _hasSpouse;
-              _dentalChildren = _children;
+              // sensible default: cover whoever the employee is adding
+              _spouseOnDental = _addingSpouse;
+              _childrenOnDental = _addingChildren;
             }
           }),
-          onSpouse: (v) => setState(() => _dentalSpouse = v),
-          onChildrenChanged: (v) => setState(() => _dentalChildren = v),
+          onSpouseOnDental: (v) => setState(() => _spouseOnDental = v),
+          onChildrenOnDental: (v) => setState(() => _childrenOnDental = v),
         );
       default:
         return _ReviewSignStep(
@@ -482,12 +547,14 @@ class _DemographicStep extends StatelessWidget {
   final TextEditingController addr1, addr2, city, state, zip;
   final bool tobacco;
   final ValueChanged<bool> onTobacco;
-  final bool hasSpouse;
+  final bool dentalOffered;
+  final bool addingSpouse;
+  final ValueChanged<bool> onAddingSpouse;
   final bool spouseTobacco;
-  final int children;
-  final Tier4 tier4;
-  final ValueChanged<bool> onSpouse;
   final ValueChanged<bool> onSpouseTobacco;
+  final bool addingChildren;
+  final ValueChanged<bool> onAddingChildren;
+  final int children;
   final ValueChanged<int> onChildren;
   final TextEditingController spFirst, spMiddle, spLast, spSsn, spPhone, spEmail;
   final List<_ChildCtrls> childCtrls;
@@ -507,12 +574,14 @@ class _DemographicStep extends StatelessWidget {
     required this.zip,
     required this.tobacco,
     required this.onTobacco,
-    required this.hasSpouse,
+    required this.dentalOffered,
+    required this.addingSpouse,
+    required this.onAddingSpouse,
     required this.spouseTobacco,
-    required this.children,
-    required this.tier4,
-    required this.onSpouse,
     required this.onSpouseTobacco,
+    required this.addingChildren,
+    required this.onAddingChildren,
+    required this.children,
     required this.onChildren,
     required this.spFirst,
     required this.spMiddle,
@@ -678,14 +747,15 @@ class _DemographicStep extends StatelessWidget {
           const Divider(height: 36),
           const _MiniLabel('DEPENDENTS'),
           const SizedBox(height: 12),
-          _DependentsControl(
-            hasSpouse: hasSpouse,
-            children: children,
-            tier: tier4,
-            onSpouse: onSpouse,
-            onChildren: onChildren,
+          _SwitchTile(
+            title: dentalOffered
+                ? 'Will you be adding a spouse / domestic partner to a medical and/or dental plan?'
+                : 'Will you be adding a spouse / domestic partner to a medical plan?',
+            subtitle: 'You\'ll choose which plans to add them to in the next steps.',
+            value: addingSpouse,
+            onChanged: onAddingSpouse,
           ),
-          if (hasSpouse) ...[
+          if (addingSpouse) ...[
             const SizedBox(height: 18),
             const _MiniLabel('SPOUSE / PARTNER'),
             const SizedBox(height: 10),
@@ -698,11 +768,33 @@ class _DemographicStep extends StatelessWidget {
               onChanged: onSpouseTobacco,
             ),
           ],
-          for (var i = 0; i < childCtrls.length; i++) ...[
-            const SizedBox(height: 18),
-            _MiniLabel('CHILD ${i + 1}'),
-            const SizedBox(height: 10),
-            _childFields(childCtrls[i]),
+          const SizedBox(height: 18),
+          _SwitchTile(
+            title: dentalOffered
+                ? 'Will you be adding children to a medical and/or dental plan?'
+                : 'Will you be adding children to a medical plan?',
+            subtitle: 'You\'ll choose which plans to add them to in the next steps.',
+            value: addingChildren,
+            onChanged: onAddingChildren,
+          ),
+          if (addingChildren) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text('How many children (26 and under)?',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700, color: AppColors.ink)),
+                ),
+                _Stepper(value: children, onChanged: onChildren),
+              ],
+            ),
+            for (var i = 0; i < childCtrls.length; i++) ...[
+              const SizedBox(height: 18),
+              _MiniLabel('CHILD ${i + 1}'),
+              const SizedBox(height: 10),
+              _childFields(childCtrls[i]),
+            ],
           ],
         ],
       ),
@@ -793,6 +885,13 @@ class _CoverageStep extends StatelessWidget {
   final num tobaccoSurcharge;
   final bool ichraInterested;
   final PayFrequency payFrequency;
+  final bool addingSpouse;
+  final bool addingChildren;
+  final bool spouseOnMedical;
+  final bool childrenOnMedical;
+  final Tier4 medicalTier;
+  final ValueChanged<bool> onSpouseOnMedical;
+  final ValueChanged<bool> onChildrenOnMedical;
   final ValueChanged<MedicalPlan> onPlan;
   final ValueChanged<String> onLevel;
   final ValueChanged<bool> onIchra;
@@ -807,6 +906,13 @@ class _CoverageStep extends StatelessWidget {
     required this.tobaccoSurcharge,
     required this.ichraInterested,
     required this.payFrequency,
+    required this.addingSpouse,
+    required this.addingChildren,
+    required this.spouseOnMedical,
+    required this.childrenOnMedical,
+    required this.medicalTier,
+    required this.onSpouseOnMedical,
+    required this.onChildrenOnMedical,
     required this.onPlan,
     required this.onLevel,
     required this.onIchra,
@@ -837,7 +943,7 @@ class _CoverageStep extends StatelessWidget {
           description: group.details.preventiveDescription,
           videoUrl: group.details.preventiveVideoUrl,
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 20),
         _PlanCard(
           selected: plan == MedicalPlan.preventiveCooperative,
           title: 'Preventive + Cooperative Bundle',
@@ -869,8 +975,32 @@ class _CoverageStep extends StatelessWidget {
             ],
           ),
         ],
+        if (addingSpouse || addingChildren) ...[
+          const SizedBox(height: 22),
+          const _MiniLabel('WHO IS ON MEDICAL'),
+          const SizedBox(height: 12),
+          if (addingSpouse)
+            _SwitchTile(
+              title: 'Add Spouse / Domestic Partner to Medical',
+              subtitle: 'Include your spouse on the medical plan.',
+              value: spouseOnMedical,
+              onChanged: onSpouseOnMedical,
+            ),
+          if (addingSpouse && addingChildren) const SizedBox(height: 12),
+          if (addingChildren)
+            _SwitchTile(
+              title: 'Add Child(ren) to Medical',
+              subtitle: 'Include your children on the medical plan.',
+              value: childrenOnMedical,
+              onChanged: onChildrenOnMedical,
+            ),
+          const SizedBox(height: 12),
+          _TierChip(label: medicalTier.label),
+        ],
         if (group.ichraEnabled) ...[
-          const SizedBox(height: 26),
+          const SizedBox(height: 28),
+          const Divider(height: 1),
+          const SizedBox(height: 24),
           _IchraSection(
             interested: ichraInterested,
             videoUrl: group.details.ichraVideoUrl,
@@ -880,6 +1010,9 @@ class _CoverageStep extends StatelessWidget {
             childTarget: group.details.ichraChildTarget,
             onChanged: onIchra,
           ),
+          // Big separation after ICHRA so each product reads as separate.
+          const SizedBox(height: 28),
+          const Divider(height: 1),
         ],
         if (tobaccoSurcharge > 0) ...[
           const SizedBox(height: 8),
@@ -1027,26 +1160,30 @@ class _IchraSection extends StatelessWidget {
 class _DentalStep extends StatelessWidget {
   final Group group;
   final bool enrolled;
-  final bool spouse;
-  final int children;
+  final bool addingSpouse;
+  final bool addingChildren;
+  final bool spouseOnDental;
+  final bool childrenOnDental;
   final Tier4 tier;
   final num dental;
   final num total;
   final ValueChanged<bool> onEnrolled;
-  final ValueChanged<bool> onSpouse;
-  final ValueChanged<int> onChildrenChanged;
+  final ValueChanged<bool> onSpouseOnDental;
+  final ValueChanged<bool> onChildrenOnDental;
 
   const _DentalStep({
     required this.group,
     required this.enrolled,
-    required this.spouse,
-    required this.children,
+    required this.addingSpouse,
+    required this.addingChildren,
+    required this.spouseOnDental,
+    required this.childrenOnDental,
     required this.tier,
     required this.dental,
     required this.total,
     required this.onEnrolled,
-    required this.onSpouse,
-    required this.onChildrenChanged,
+    required this.onSpouseOnDental,
+    required this.onChildrenOnDental,
   });
 
   @override
@@ -1064,7 +1201,11 @@ class _DentalStep extends StatelessWidget {
           description: group.details.dentalDescription,
           videoUrl: group.details.dentalVideoUrl,
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
+        // Show the per-tier rates up front, before enrolling, so the employee
+        // knows what they would pay.
+        _DentalRatesBox(group: group),
+        const SizedBox(height: 18),
         _SwitchTile(
           title: 'Add dental coverage',
           subtitle: enrolled
@@ -1073,17 +1214,27 @@ class _DentalStep extends StatelessWidget {
           value: enrolled,
           onChanged: onEnrolled,
         ),
-        if (enrolled) ...[
+        if (enrolled && (addingSpouse || addingChildren)) ...[
           const SizedBox(height: 18),
-          const _MiniLabel('WHO IS COVERED'),
+          const _MiniLabel('WHO IS ON DENTAL'),
           const SizedBox(height: 12),
-          _DependentsControl(
-            hasSpouse: spouse,
-            children: children,
-            tier: tier,
-            onSpouse: onSpouse,
-            onChildren: onChildrenChanged,
-          ),
+          if (addingSpouse)
+            _SwitchTile(
+              title: 'Add Spouse / Domestic Partner to Dental',
+              subtitle: 'Include your spouse on the dental plan.',
+              value: spouseOnDental,
+              onChanged: onSpouseOnDental,
+            ),
+          if (addingSpouse && addingChildren) const SizedBox(height: 12),
+          if (addingChildren)
+            _SwitchTile(
+              title: 'Add Child(ren) to Dental',
+              subtitle: 'Include your children on the dental plan.',
+              value: childrenOnDental,
+              onChanged: onChildrenOnDental,
+            ),
+          const SizedBox(height: 12),
+          _TierChip(label: tier.label),
         ],
         const SizedBox(height: 24),
         _CostSummary(
@@ -1455,59 +1606,78 @@ class EnrollComplete extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Shared controls
 
-class _DependentsControl extends StatelessWidget {
-  final bool hasSpouse;
-  final int children;
-  final Tier4 tier;
-  final ValueChanged<bool> onSpouse;
-  final ValueChanged<int> onChildren;
-  const _DependentsControl({
-    required this.hasSpouse,
-    required this.children,
-    required this.tier,
-    required this.onSpouse,
-    required this.onChildren,
-  });
+/// A small chip showing the computed coverage tier for a product.
+class _TierChip extends StatelessWidget {
+  final String label;
+  const _TierChip({required this.label});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SwitchTile(
-          title: 'Cover my spouse / domestic partner',
-          subtitle: 'Adds your spouse to coverage.',
-          value: hasSpouse,
-          onChanged: onSpouse,
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            const Expanded(
-              child: Text('Children (26 and under)',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.ink)),
-            ),
-            _Stepper(value: children, onChanged: onChildren),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppColors.field,
-            borderRadius: BorderRadius.circular(10),
-          ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.field,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.people_alt_rounded, size: 16, color: AppColors.muted),
+          const SizedBox(width: 8),
+          const Text('Your tier: ', style: TextStyle(color: AppColors.muted)),
+          Text(label,
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700, color: AppColors.navy)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The fixed dental rate for each tier (the employee's monthly cost), shown
+/// before the employee enrolls so they know what they would pay.
+class _DentalRatesBox extends StatelessWidget {
+  final Group group;
+  const _DentalRatesBox({required this.group});
+
+  @override
+  Widget build(BuildContext context) {
+    Widget row(String label, Tier4 t) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(
             children: [
-              const Icon(Icons.people_alt_rounded, size: 16, color: AppColors.muted),
-              const SizedBox(width: 8),
-              const Text('Your tier: ', style: TextStyle(color: AppColors.muted)),
-              Text(tier.label,
-                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.navy)),
+              Expanded(
+                  child: Text(label,
+                      style: const TextStyle(color: AppColors.muted, fontSize: 13))),
+              Text('${money(group.dental.employeeCost(t))}/mo',
+                  style: const TextStyle(
+                      color: AppColors.navy,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5)),
             ],
           ),
-        ),
-      ],
+        );
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.field,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('YOUR DENTAL RATE BY TIER',
+              style: TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.8)),
+          const SizedBox(height: 8),
+          row('Employee Only', Tier4.employeeOnly),
+          row('Employee + Spouse', Tier4.spouse),
+          row('Employee + Child(ren)', Tier4.child),
+          row('Employee + Family', Tier4.family),
+        ],
+      ),
     );
   }
 }

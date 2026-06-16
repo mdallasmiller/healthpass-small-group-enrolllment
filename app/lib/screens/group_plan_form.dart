@@ -1,9 +1,11 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:printing/printing.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
 import '../utils/formatters.dart';
+import '../utils/group_pdf.dart';
 import '../widgets/ui.dart';
 
 const _tier4Short = {
@@ -39,7 +41,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   bool _domesticPartners = false;
   bool _stacking = false;
   TobaccoSurchargePayer _tobaccoPayer = TobaccoSurchargePayer.company;
-  late final TextEditingController _tobaccoSurcharge;
 
   late final Map<String, Map<String, TextEditingController>> _medical;
 
@@ -47,7 +48,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   DentalOption _dentalOption = DentalOption.coop2500;
   DentalContributionMode _dentalContribMode = DentalContributionMode.voluntary;
   late final TextEditingController _dentalCompanyContribution;
-  late final Map<String, TextEditingController> _dental;
 
   // Eligibility
   WaitingPeriod _waitingPeriod = WaitingPeriod.firstFollowingHire;
@@ -119,8 +119,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     _domesticPartners = det.domesticPartners;
     _stacking = det.stacking;
     _tobaccoPayer = g?.tobaccoSurchargePayer ?? TobaccoSurchargePayer.company;
-    // Tobacco surcharge is a fixed $75; the field is read-only.
-    _tobaccoSurcharge = TextEditingController(text: '75');
 
     _medical = {
       for (final level in kCoopLevels)
@@ -137,10 +135,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     _dentalContribMode = d.contributionMode;
     _dentalCompanyContribution =
         TextEditingController(text: _fmt(d.companyContribution));
-    _dental = {
-      for (final t in Tier4.values)
-        t.key: TextEditingController(text: _fmt(d.rates.forTier(t))),
-    };
     _waitingPeriod = (g?.details ?? const GroupDetails()).waitingPeriod;
 
     _mode = g?.contributionMode ?? ContributionMode.employeeFacing;
@@ -166,7 +160,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
   void dispose() {
     _name.dispose();
     _email.dispose();
-    _tobaccoSurcharge.dispose();
     _dentalCompanyContribution.dispose();
     for (final c in _d.values) {
       c.dispose();
@@ -175,9 +168,6 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
       for (final c in m.values) {
         c.dispose();
       }
-    }
-    for (final c in _dental.values) {
-      c.dispose();
     }
     _employerContribution.dispose();
     for (final band in _dc.values) {
@@ -209,91 +199,116 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
         family: _parse(m[Tier4.family.key]!.text),
       );
 
+  /// Builds a Group from the current form state (shared by save and export).
+  Group _composeGroup() {
+    String t(String k) => _d[k]!.text.trim();
+    final details = GroupDetails(
+      dba: t('dba'),
+      effectiveDate: t('effectiveDate'),
+      startDate: t('startDate'),
+      affiliateCompany: t('affiliateCompany'),
+      affiliateEmail: t('affiliateEmail'),
+      producer: t('producer'),
+      referralPartner: t('referralPartner'),
+      referer: t('referer'),
+      refererName: t('refererName'),
+      eligibilityDefinition: t('eligibilityDefinition'),
+      waitingPeriod: _waitingPeriod,
+      waitingPeriodOther: t('waitingPeriodOther'),
+      taxId: t('taxId'),
+      businessPhone: t('businessPhone'),
+      website: t('website'),
+      fullTimeEmployees: t('fullTimeEmployees'),
+      addressLine1: t('addressLine1'),
+      addressLine2: t('addressLine2'),
+      city: t('city'),
+      state: t('state'),
+      zip: t('zip'),
+      educationDate: t('educationDate'),
+      educationTime: t('educationTime'),
+      enrollmentStrategy: t('enrollmentStrategy'),
+      adminFirstName: t('adminFirstName'),
+      adminLastName: t('adminLastName'),
+      adminPhone: t('adminPhone'),
+      billingFirstName: t('billingFirstName'),
+      billingLastName: t('billingLastName'),
+      billingPhone: t('billingPhone'),
+      billingEmail: t('billingEmail'),
+      domesticPartners: _domesticPartners,
+      stacking: _stacking,
+      ichraEoTarget: _parse(t('ichraEoTarget')),
+      ichraSpouseTarget: _parse(t('ichraSpouseTarget')),
+      ichraChildTarget: _parse(t('ichraChildTarget')),
+      healthVideoUrl: t('healthVideoUrl'),
+      ichraVideoUrl: t('ichraVideoUrl'),
+      dentalVideoUrl: t('dentalVideoUrl'),
+      healthDescription: t('healthDescription'),
+      ichraDescription: t('ichraDescription'),
+      dentalDescription: t('dentalDescription'),
+      notes: t('notes'),
+    );
+
+    final definedContribution = DefinedContribution(
+      employerContribution: _parse(_employerContribution.text),
+      rates: {
+        for (final band in kAgeBands)
+          band: {
+            for (final level in kCoopLevels)
+              level: _rates4From(_dc[band]![level]!)
+          }
+      },
+    );
+
+    return (widget.group ?? Group.empty()).copyWith(
+      name: _name.text.trim(),
+      contactEmail: _email.text.trim(),
+      ichraEnabled: _ichra,
+      tobaccoSurcharge: 75, // fixed
+      tobaccoSurchargePayer: _tobaccoPayer,
+      details: details,
+      contributionMode: _mode,
+      offeredLevels: kCoopLevels.where(_offered.contains).toList(),
+      definedContribution: definedContribution,
+      payFrequency: _payFrequency,
+      status: _status,
+      medicalRates: {
+        for (final level in kCoopLevels) level: _ratesFrom(_medical[level]!)
+      },
+      dental: DentalConfig(
+        enabled: _dentalEnabled,
+        option: _dentalOption,
+        rates: kStaticDentalRates,
+        contributionMode: _dentalContribMode,
+        companyContribution: _parse(_dentalCompanyContribution.text),
+      ),
+    );
+  }
+
+  /// Exports the group's current setup as a PDF to share with a partner org.
+  Future<void> _exportInfo() async {
+    setState(() => _busy = true);
+    try {
+      final group = _composeGroup();
+      final safe = group.name.trim().isEmpty ? 'group' : group.name.trim();
+      await Printing.sharePdf(
+        bytes: await buildGroupInfoPdf(group),
+        filename: '$safe setup.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Export failed: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      String t(String k) => _d[k]!.text.trim();
-      final details = GroupDetails(
-        dba: t('dba'),
-        effectiveDate: t('effectiveDate'),
-        startDate: t('startDate'),
-        affiliateCompany: t('affiliateCompany'),
-        affiliateEmail: t('affiliateEmail'),
-        producer: t('producer'),
-        referralPartner: t('referralPartner'),
-        referer: t('referer'),
-        refererName: t('refererName'),
-        eligibilityDefinition: t('eligibilityDefinition'),
-        waitingPeriod: _waitingPeriod,
-        waitingPeriodOther: t('waitingPeriodOther'),
-        taxId: t('taxId'),
-        businessPhone: t('businessPhone'),
-        website: t('website'),
-        fullTimeEmployees: t('fullTimeEmployees'),
-        addressLine1: t('addressLine1'),
-        addressLine2: t('addressLine2'),
-        city: t('city'),
-        state: t('state'),
-        zip: t('zip'),
-        educationDate: t('educationDate'),
-        educationTime: t('educationTime'),
-        enrollmentStrategy: t('enrollmentStrategy'),
-        adminFirstName: t('adminFirstName'),
-        adminLastName: t('adminLastName'),
-        adminPhone: t('adminPhone'),
-        billingFirstName: t('billingFirstName'),
-        billingLastName: t('billingLastName'),
-        billingPhone: t('billingPhone'),
-        billingEmail: t('billingEmail'),
-        domesticPartners: _domesticPartners,
-        stacking: _stacking,
-        ichraEoTarget: _parse(t('ichraEoTarget')),
-        ichraSpouseTarget: _parse(t('ichraSpouseTarget')),
-        ichraChildTarget: _parse(t('ichraChildTarget')),
-        healthVideoUrl: t('healthVideoUrl'),
-        ichraVideoUrl: t('ichraVideoUrl'),
-        dentalVideoUrl: t('dentalVideoUrl'),
-        healthDescription: t('healthDescription'),
-        ichraDescription: t('ichraDescription'),
-        dentalDescription: t('dentalDescription'),
-        notes: t('notes'),
-      );
-
-      final definedContribution = DefinedContribution(
-        employerContribution: _parse(_employerContribution.text),
-        rates: {
-          for (final band in kAgeBands)
-            band: {
-              for (final level in kCoopLevels)
-                level: _rates4From(_dc[band]![level]!)
-            }
-        },
-      );
-
-      final group = (widget.group ?? Group.empty()).copyWith(
-        name: _name.text.trim(),
-        contactEmail: _email.text.trim(),
-        ichraEnabled: _ichra,
-        tobaccoSurcharge: 75, // fixed
-        tobaccoSurchargePayer: _tobaccoPayer,
-        details: details,
-        contributionMode: _mode,
-        offeredLevels: kCoopLevels.where(_offered.contains).toList(),
-        definedContribution: definedContribution,
-        payFrequency: _payFrequency,
-        status: _status,
-        medicalRates: {
-          for (final level in kCoopLevels) level: _ratesFrom(_medical[level]!)
-        },
-        dental: DentalConfig(
-          enabled: _dentalEnabled,
-          option: _dentalOption,
-          rates: _rates4From(_dental),
-          contributionMode: _dentalContribMode,
-          companyContribution: _parse(_dentalCompanyContribution.text),
-        ),
-      );
+      final group = _composeGroup();
 
       if (widget.isEdit) {
         await _service.update(widget.group!.id!, group);
@@ -335,10 +350,8 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
           _rateOptionsCard(),
           const SizedBox(height: 16),
           _dentalCard(),
-          if (_ichra) ...[
-            const SizedBox(height: 16),
-            _ichraTargetsCard(),
-          ],
+          const SizedBox(height: 16),
+          _ichraCard(),
           const SizedBox(height: 16),
           _videosCard(),
           const SizedBox(height: 16),
@@ -370,6 +383,15 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _exportInfo,
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+              label: const Text('Export info (PDF)'),
+            ),
           ),
           const SizedBox(height: 40),
         ],
@@ -570,16 +592,25 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          LabeledField(
-            label: 'Tobacco surcharge (per tobacco user, monthly)',
-            hint: 'Fixed at \$75 per tobacco user on a Cooperative plan.',
-            child: TextFormField(
-              controller: _tobaccoSurcharge,
-              enabled: false,
-              decoration: const InputDecoration(
-                prefixText: '\$ ',
-                isDense: true,
-              ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.field,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline_rounded,
+                    size: 18, color: AppColors.muted),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Tobacco surcharge is a fixed \$75 per tobacco user, per month '
+                    'on a Cooperative plan.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -612,15 +643,37 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     );
   }
 
-  Widget _ichraTargetsCard() {
+  Widget _ichraCard() {
     return SectionCard(
-      title: 'ICHRA Target Employee Rate',
-      subtitle: 'Estimated monthly cost shown to the employee at each tier.',
-      child: _fieldRow([
-        LabeledField(label: 'Employee', child: _money(_d['ichraEoTarget']!)),
-        LabeledField(label: 'Spouse', child: _money(_d['ichraSpouseTarget']!)),
-        LabeledField(label: 'Child', child: _money(_d['ichraChildTarget']!)),
-      ]),
+      title: 'ICHRA',
+      subtitle: 'Individual Coverage HRA option shown in the enrollment portal.',
+      trailing: Switch(
+        value: _ichra,
+        activeThumbColor: AppColors.coral,
+        onChanged: (v) => setState(() => _ichra = v),
+      ),
+      child: !_ichra
+          ? Text('ICHRA is turned off for this group.',
+              style: TextStyle(color: AppColors.muted))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _GroupLabel('TARGET EMPLOYEE RATE'),
+                const SizedBox(height: 4),
+                Text(
+                    'Estimated monthly cost shown to the employee at each tier.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
+                const SizedBox(height: 14),
+                _fieldRow([
+                  LabeledField(
+                      label: 'Employee', child: _money(_d['ichraEoTarget']!)),
+                  LabeledField(
+                      label: 'Spouse', child: _money(_d['ichraSpouseTarget']!)),
+                  LabeledField(
+                      label: 'Child', child: _money(_d['ichraChildTarget']!)),
+                ]),
+              ],
+            ),
     );
   }
 
@@ -690,35 +743,14 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     return SectionCard(
       title: 'Group details',
       subtitle: 'Employer information and plan options.',
-      child: Column(
-        children: [
-          LabeledField(
-            label: 'Group / employer name',
-            child: TextFormField(
-              controller: _name,
-              decoration: const InputDecoration(hintText: 'Acme Corp'),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Group name is required.' : null,
-            ),
-          ),
-          const SizedBox(height: 20),
-          _SwitchRow(
-            title: 'Offer ICHRA',
-            subtitle: 'Shows the ICHRA option in the employee enrollment portal.',
-            value: _ichra,
-            onChanged: (v) => setState(() => _ichra = v),
-          ),
-          const SizedBox(height: 20),
-          LabeledField(
-            label: 'Status',
-            child: _Segmented<GroupStatus>(
-              values: GroupStatus.values,
-              selected: _status,
-              labelOf: (s) => s.name[0].toUpperCase() + s.name.substring(1),
-              onChanged: (s) => setState(() => _status = s),
-            ),
-          ),
-        ],
+      child: LabeledField(
+        label: 'Group / employer name',
+        child: TextFormField(
+          controller: _name,
+          decoration: const InputDecoration(hintText: 'Acme Corp'),
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Group name is required.' : null,
+        ),
       ),
     );
   }
@@ -832,9 +864,9 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const _GroupLabel('TIER RATES (MONTHLY)'),
+                const _GroupLabel('TIER RATES (MONTHLY) · FIXED'),
                 const SizedBox(height: 10),
-                _TierRow(controllers: _dental, money: _money),
+                _dentalRatesDisplay(),
                 const Divider(height: 32),
                 LabeledField(
                   label: 'Contribution',
@@ -848,8 +880,8 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                 if (_dentalContribMode == DentalContributionMode.voluntary) ...[
                   const SizedBox(height: 10),
                   Text(
-                      'Voluntary: the employee pays the tier rate above. (Sample 2500: '
-                      'EO \$35 / +Spouse \$70 / +Child \$75 / +Family \$100.)',
+                      'Voluntary: the employee pays the fixed tier rate above '
+                      '(EO \$35 / +Spouse \$70 / +Child \$75 / +Family \$100).',
                       style: TextStyle(color: AppColors.muted, fontSize: 12.5)),
                 ] else ...[
                   const SizedBox(height: 14),
@@ -861,6 +893,46 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
                 ],
               ],
             ),
+    );
+  }
+
+  /// Read-only display of the fixed dental tier rates (35 / 70 / 75 / 100).
+  Widget _dentalRatesDisplay() {
+    Widget cell(Tier4 t) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_tier4Short[t]!.toUpperCase(),
+                  style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.4)),
+              const SizedBox(height: 6),
+              Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppColors.field,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.line),
+                ),
+                child: Text('\$${kStaticDentalRates.forTier(t).toInt()}',
+                    style: const TextStyle(
+                        color: AppColors.navy, fontWeight: FontWeight.w700)),
+              ),
+            ],
+          ),
+        );
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < Tier4.values.length; i++) ...[
+          cell(Tier4.values[i]),
+          if (i != Tier4.values.length - 1) const SizedBox(width: 10),
+        ],
+      ],
     );
   }
 
@@ -953,31 +1025,6 @@ class _RatesGrid extends StatelessWidget {
         Expanded(child: money(m[Tier.spouseChild.key]!)),
         const SizedBox(width: 10),
         Expanded(child: money(m[Tier.family.key]!)),
-      ],
-    );
-  }
-}
-
-class _TierRow extends StatelessWidget {
-  final Map<String, TextEditingController> controllers;
-  final Widget Function(TextEditingController) money;
-  const _TierRow({required this.controllers, required this.money});
-
-  @override
-  Widget build(BuildContext context) {
-    Widget field(Tier4 t) => Expanded(
-          child: LabeledField(
-            label: _tier4Short[t]!,
-            child: money(controllers[t.key]!),
-          ),
-        );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var i = 0; i < Tier4.values.length; i++) ...[
-          field(Tier4.values[i]),
-          if (i != Tier4.values.length - 1) const SizedBox(width: 10),
-        ],
       ],
     );
   }

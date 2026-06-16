@@ -252,6 +252,12 @@ const Map<String, Map<String, Tier4Rates>> _standardRates = {
   },
 };
 
+/// Dental tier rates are fixed (static) for every plan option: the employee's
+/// monthly cost before any company contribution. Confirmed by Michael — the
+/// rates never change, only the plan and the contribution do.
+const Tier4Rates kStaticDentalRates =
+    Tier4Rates(employeeOnly: 35, spouse: 70, child: 75, family: 100);
+
 enum DentalOption { coop1500, coop2500, bentoSelfFunded }
 
 extension DentalOptionLabel on DentalOption {
@@ -283,7 +289,7 @@ class DentalConfig {
   const DentalConfig({
     this.enabled = false,
     this.option = DentalOption.coop2500,
-    this.rates = const Tier4Rates(),
+    this.rates = kStaticDentalRates,
     this.contributionMode = DentalContributionMode.voluntary,
     this.companyContribution = 0,
   });
@@ -319,7 +325,9 @@ class DentalConfig {
           (o) => o.key == m?['option'],
           orElse: () => DentalOption.coop2500,
         ),
-        rates: Tier4Rates.fromMap(m?['rates'] as Map<String, dynamic>?),
+        // Rates are always the fixed static set, regardless of what was
+        // previously stored (older groups may hold stale editable values).
+        rates: kStaticDentalRates,
         contributionMode: DentalContributionMode.values.firstWhere(
           (c) => c.name == m?['contributionMode'],
           orElse: () => DentalContributionMode.voluntary,
