@@ -363,11 +363,20 @@ class RosterView extends StatelessWidget {
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
 
-    final employees = parseRosterCsv(bytes);
+    final parsed = parseRosterCsv(bytes);
     if (!context.mounted) return;
-    if (employees.isEmpty) {
+    if (parsed.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No valid rows found in the CSV.')),
+      );
+      return;
+    }
+    final (fresh, skipped) = await _dedupe(parsed);
+    if (!context.mounted) return;
+    if (fresh.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+            'All ${parsed.length} already in the roster — nothing to import.')),
       );
       return;
     }
@@ -377,7 +386,8 @@ class RosterView extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Import roster'),
         content: Text(
-            'Found ${employees.length} employee${employees.length == 1 ? '' : 's'} to import. Continue?'),
+            'Found ${fresh.length} new employee${fresh.length == 1 ? '' : 's'} to import.'
+            '${skipped > 0 ? ' ($skipped duplicate(s) already in the roster will be skipped.)' : ''} Continue?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -390,12 +400,41 @@ class RosterView extends StatelessWidget {
     );
     if (confirmed != true) return;
 
-    final count = await EmployeeService().addMany(groupId, employees);
+    final count = await EmployeeService().addMany(groupId, fresh);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $count employees')),
+        SnackBar(content: Text('Imported $count'
+            '${skipped > 0 ? ', skipped $skipped duplicate(s)' : ''}')),
       );
     }
+  }
+
+  /// Drops parsed employees whose email or SSN already exists in the roster
+  /// (and de-duplicates within the batch). Returns the fresh ones + skip count.
+  Future<(List<Employee>, int)> _dedupe(List<Employee> parsed) async {
+    final existing = await EmployeeService().getAll(groupId);
+    final emails = <String>{};
+    final ssns = <String>{};
+    for (final e in existing) {
+      if (e.email.trim().isNotEmpty) emails.add(e.email.trim().toLowerCase());
+      if (e.ssn.trim().isNotEmpty) ssns.add(e.ssn.trim());
+    }
+    final fresh = <Employee>[];
+    var skipped = 0;
+    for (final e in parsed) {
+      final email = e.email.trim().toLowerCase();
+      final ssn = e.ssn.trim();
+      final dup = (email.isNotEmpty && emails.contains(email)) ||
+          (ssn.isNotEmpty && ssns.contains(ssn));
+      if (dup) {
+        skipped++;
+        continue;
+      }
+      if (email.isNotEmpty) emails.add(email);
+      if (ssn.isNotEmpty) ssns.add(ssn);
+      fresh.add(e);
+    }
+    return (fresh, skipped);
   }
 
   Future<void> _importCensus(BuildContext context) async {
@@ -407,23 +446,33 @@ class RosterView extends StatelessWidget {
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
 
-    final employees = parseCensusCsv(bytes);
+    final parsed = parseCensusCsv(bytes);
     if (!context.mounted) return;
-    if (employees.isEmpty) {
+    if (parsed.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No valid rows found in the census.')),
       );
       return;
     }
-    final ineligible = employees.where((e) => !e.eligible).length;
+    final (fresh, skipped) = await _dedupe(parsed);
+    if (!context.mounted) return;
+    if (fresh.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+            'All ${parsed.length} already in the roster — nothing to import.')),
+      );
+      return;
+    }
+    final ineligible = fresh.where((e) => !e.eligible).length;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Import census'),
         content: Text(
-          'Found ${employees.length} employee${employees.length == 1 ? '' : 's'}. '
+          'Found ${fresh.length} new employee${fresh.length == 1 ? '' : 's'}. '
           'Their demographics will auto-load into the enrollment portal.'
+          '${skipped > 0 ? '\n\n$skipped duplicate(s) already in the roster will be skipped.' : ''}'
           '${ineligible > 0 ? '\n\n$ineligible marked ineligible (no invitation will be sent).' : ''}',
           style: const TextStyle(height: 1.5),
         ),
@@ -439,10 +488,11 @@ class RosterView extends StatelessWidget {
     );
     if (confirmed != true) return;
 
-    final count = await EmployeeService().addMany(groupId, employees);
+    final count = await EmployeeService().addMany(groupId, fresh);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Imported $count employees from census')),
+        SnackBar(content: Text('Imported $count'
+            '${skipped > 0 ? ', skipped $skipped duplicate(s)' : ''}')),
       );
     }
   }

@@ -46,6 +46,12 @@ class EmployeeService {
     return code;
   }
 
+  /// One-shot read of all employees in a group (used for import de-duplication).
+  Future<List<Employee>> getAll(String groupId) async {
+    final snap = await _col(groupId).get();
+    return snap.docs.map(Employee.fromDoc).toList();
+  }
+
   /// Reads a single employee (used by the enrollment portal to validate).
   Future<Employee?> getEmployee(String groupId, String employeeId) async {
     final doc = await _col(groupId).doc(employeeId).get();
