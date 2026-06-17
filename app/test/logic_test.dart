@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:healthpass_enroll/models/group.dart';
+import 'package:healthpass_enroll/utils/formatters.dart';
 import 'package:healthpass_enroll/utils/pricing.dart';
 import 'package:healthpass_enroll/utils/reports.dart';
 import 'package:healthpass_enroll/utils/roster_import.dart';
@@ -95,6 +96,30 @@ void main() {
       expect(determineTier4(true, 0), Tier4.spouse);
       expect(determineTier4(false, 2), Tier4.child);
       expect(determineTier4(true, 1), Tier4.family);
+    });
+  });
+
+  group('DOB normalization', () {
+    test('expands 2-digit year and pads (client example)', () {
+      expect(normalizeDob('1/2/05'), '01/02/2005');
+    });
+    test('keeps 4-digit dates, pads single digits', () {
+      expect(normalizeDob('3/15/1985'), '03/15/1985');
+      expect(normalizeDob('07/20/1978'), '07/20/1978');
+    });
+    test('2-digit year pivot: <=30 -> 2000s, else 1900s', () {
+      expect(normalizeDob('1/2/30'), '01/02/2030');
+      expect(normalizeDob('1/2/31'), '01/02/1931');
+      expect(normalizeDob('1/2/65'), '01/02/1965');
+    });
+    test('accepts dash/dot separators', () {
+      expect(normalizeDob('1-2-2005'), '01/02/2005');
+      expect(normalizeDob('1.2.2005'), '01/02/2005');
+    });
+    test('leaves unparseable input unchanged (trimmed)', () {
+      expect(normalizeDob('not a date'), 'not a date');
+      expect(normalizeDob('  '), '');
+      expect(normalizeDob(''), '');
     });
   });
 

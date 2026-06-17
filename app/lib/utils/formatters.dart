@@ -16,6 +16,24 @@ class DateSlashFormatter extends TextInputFormatter {
   }
 }
 
+/// Normalizes a loosely-formatted date to MM/DD/YYYY: pads single-digit month
+/// and day, and expands a 2-digit year (00–30 -> 2000s, 31–99 -> 1900s).
+/// e.g. "1/2/05" -> "01/02/2005". Returns the trimmed input unchanged if it
+/// doesn't look like a date.
+String normalizeDob(String raw) {
+  final m = RegExp(r'^\s*(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2}|\d{4})\s*$')
+      .firstMatch(raw);
+  if (m == null) return raw.trim();
+  final mm = m.group(1)!.padLeft(2, '0');
+  final dd = m.group(2)!.padLeft(2, '0');
+  var year = m.group(3)!;
+  if (year.length == 2) {
+    final yy = int.parse(year);
+    year = (yy <= 30 ? 2000 + yy : 1900 + yy).toString();
+  }
+  return '$mm/$dd/$year';
+}
+
 /// Digits only.
 final digitsOnly = FilteringTextInputFormatter.digitsOnly;
 

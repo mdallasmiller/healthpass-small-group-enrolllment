@@ -201,12 +201,17 @@ class EnrollShell extends StatelessWidget {
   /// When set (admin "Enroll now" preview), shows a back button to exit the
   /// portal and return to the admin app.
   final VoidCallback? onClose;
+
+  /// Optional controller for the scroll view (lets the portal jump to the top
+  /// when moving between steps).
+  final ScrollController? scrollController;
   const EnrollShell({
     super.key,
     required this.child,
     this.loading = false,
     this.maxWidth = 520,
     this.onClose,
+    this.scrollController,
   });
 
   @override
@@ -286,6 +291,7 @@ class EnrollShell extends StatelessWidget {
                   Expanded(
                     child: Center(
                       child: SingleChildScrollView(
+                        controller: scrollController,
                         padding: const EdgeInsets.all(24),
                         child: ConstrainedBox(
                           constraints: BoxConstraints(maxWidth: maxWidth),

@@ -39,6 +39,7 @@ enum MedicalPlan { preventiveOnly, preventiveCooperative }
 class _EnrollPortalState extends State<EnrollPortal> {
   int _step = 0;
   final _personalKey = GlobalKey<FormState>();
+  final _scroll = ScrollController();
 
   late final TextEditingController _first =
       TextEditingController(text: widget.employee.firstName);
@@ -47,6 +48,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
       TextEditingController(text: widget.employee.lastName);
   final _dob = TextEditingController();
   final _ssn = TextEditingController();
+  final _phone = TextEditingController();
   // address (separate fields per client request)
   final _addr1 = TextEditingController();
   final _addr2 = TextEditingController();
@@ -208,8 +210,14 @@ class _EnrollPortalState extends State<EnrollPortal> {
     // Auto-load demographics imported from the census.
     final e = widget.employee;
     if (e.middleName.isNotEmpty) _middle.text = e.middleName;
-    if (e.dob.isNotEmpty) _dob.text = e.dob;
+    // Census DOB can be loosely formatted (e.g. 1/2/05) -> normalize to MM/DD/YYYY.
+    if (e.dob.isNotEmpty) _dob.text = normalizeDob(e.dob);
     if (e.ssn.isNotEmpty) _ssn.text = e.ssn;
+    if (e.mobilePhone.isNotEmpty) {
+      _phone.text = e.mobilePhone;
+    } else if (e.phone.isNotEmpty) {
+      _phone.text = e.phone;
+    }
     if (e.addressLine1.isNotEmpty) _addr1.text = e.addressLine1;
     if (e.addressLine2.isNotEmpty) _addr2.text = e.addressLine2;
     if (e.city.isNotEmpty) _city.text = e.city;
@@ -227,7 +235,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
   @override
   void dispose() {
     for (final c in [
-      _first, _middle, _last, _dob, _ssn,
+      _first, _middle, _last, _dob, _ssn, _phone,
       _addr1, _addr2, _city, _state, _zip,
       _spFirst, _spMiddle, _spLast, _spSsn, _spPhone, _spEmail,
     ]) {
@@ -236,7 +244,18 @@ class _EnrollPortalState extends State<EnrollPortal> {
     for (final c in _childCtrls) {
       c.dispose();
     }
+    _scroll.dispose();
     super.dispose();
+  }
+
+  /// Jumps the page back to the top (used when moving between steps).
+  void _scrollTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(0,
+            duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
+      }
+    });
   }
 
   void _next() {
@@ -244,25 +263,33 @@ class _EnrollPortalState extends State<EnrollPortal> {
     if (step == 'Demographics' && !(_personalKey.currentState?.validate() ?? true)) {
       return;
     }
-    if (_step < _steps.length - 1) setState(() => _step++);
+    if (_step < _steps.length - 1) {
+      setState(() => _step++);
+      _scrollTop();
+    }
   }
 
   void _back() {
-    if (_step > 0) setState(() => _step--);
+    if (_step > 0) {
+      setState(() => _step--);
+      _scrollTop();
+    }
   }
 
   Future<void> _submit(
     Uint8List? signature,
     Map<String, bool> acks,
     Map<String, dynamic> audit,
+    String employeeNotes,
   ) async {
     final data = <String, dynamic>{
       'personal': {
         'firstName': _first.text.trim(),
         'middleName': _middle.text.trim(),
         'lastName': _last.text.trim(),
-        'dob': _dob.text.trim(),
+        'dob': normalizeDob(_dob.text.trim()),
         'ssn': _ssn.text.trim(),
+        'phone': _phone.text.trim(),
         'sex': _sex,
         'addressLine1': _addr1.text.trim(),
         'addressLine2': _addr2.text.trim(),
@@ -293,6 +320,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
               'middleName': c.middle.text.trim(),
               'lastName': c.last.text.trim(),
               'ssn': c.ssn.text.trim(),
+              'dob': normalizeDob(c.dob.text.trim()),
             }
         ],
       },
@@ -327,6 +355,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
       'ichra': {'interested': _ichraInterested},
       'acknowledgements': acks,
       'audit': audit,
+      'employeeNotes': employeeNotes,
       'totals': {
         'monthly': _total,
         'perPayPeriod': perPayPeriod(_g, _total),
@@ -347,6 +376,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
   Widget build(BuildContext context) {
     return EnrollShell(
       maxWidth: 720,
+      scrollController: _scroll,
       onClose: widget.adminMode ? () => Navigator.of(context).maybePop() : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -374,6 +404,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
           last: _last,
           dob: _dob,
           ssn: _ssn,
+          phone: _phone,
           sex: _sex,
           onSex: (v) => setState(() => _sex = v),
           addr1: _addr1,
@@ -456,6 +487,7 @@ class _EnrollPortalState extends State<EnrollPortal> {
           dental: _dental,
           ichraInterested: _ichraInterested,
           total: _total,
+          adminMode: widget.adminMode,
           onSubmit: _submit,
         );
     }
@@ -541,7 +573,7 @@ class _StepProgress extends StatelessWidget {
 
 class _DemographicStep extends StatelessWidget {
   final GlobalKey<FormState> formKey;
-  final TextEditingController first, middle, last, dob, ssn;
+  final TextEditingController first, middle, last, dob, ssn, phone;
   final String sex;
   final ValueChanged<String> onSex;
   final TextEditingController addr1, addr2, city, state, zip;
@@ -565,6 +597,7 @@ class _DemographicStep extends StatelessWidget {
     required this.last,
     required this.dob,
     required this.ssn,
+    required this.phone,
     required this.sex,
     required this.onSex,
     required this.addr1,
@@ -683,6 +716,15 @@ class _DemographicStep extends StatelessWidget {
                   if (s == 'Male') const SizedBox(width: 10),
                 ],
               ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          LabeledField(
+            label: 'Phone number',
+            child: TextFormField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(hintText: '(555) 123-4567'),
             ),
           ),
           const SizedBox(height: 16),
@@ -831,6 +873,14 @@ class _DemographicStep extends StatelessWidget {
         validator: _ssnValidator,
       );
 
+  Widget _dobField(TextEditingController c) => TextFormField(
+        controller: c,
+        keyboardType: TextInputType.number,
+        inputFormatters: [_DobFormatter()],
+        decoration: const InputDecoration(hintText: 'MM/DD/YYYY'),
+        validator: _dobValidator,
+      );
+
   Widget _spouseFields() {
     return Column(
       children: [
@@ -867,7 +917,16 @@ class _DemographicStep extends StatelessWidget {
       children: [
         _nameRow(c.first, c.middle, c.last, required: true),
         const SizedBox(height: 12),
-        LabeledField(label: 'SSN', child: _ssnField(c.ssn)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+                child: LabeledField(
+                    label: 'Date of birth', child: _dobField(c.dob))),
+            const SizedBox(width: 10),
+            Expanded(child: LabeledField(label: 'SSN', child: _ssnField(c.ssn))),
+          ],
+        ),
       ],
     );
   }
@@ -1046,11 +1105,13 @@ class _ChildCtrls {
   final middle = TextEditingController();
   final last = TextEditingController();
   final ssn = TextEditingController();
+  final dob = TextEditingController();
   void dispose() {
     first.dispose();
     middle.dispose();
     last.dispose();
     ssn.dispose();
+    dob.dispose();
   }
 }
 
@@ -1202,10 +1263,6 @@ class _DentalStep extends StatelessWidget {
           videoUrl: group.details.dentalVideoUrl,
         ),
         const SizedBox(height: 18),
-        // Show the per-tier rates up front, before enrolling, so the employee
-        // knows what they would pay.
-        _DentalRatesBox(group: group),
-        const SizedBox(height: 18),
         _SwitchTile(
           title: 'Add dental coverage',
           subtitle: enrolled
@@ -1214,6 +1271,9 @@ class _DentalStep extends StatelessWidget {
           value: enrolled,
           onChanged: onEnrolled,
         ),
+        const SizedBox(height: 18),
+        // Per-tier rates so the employee can see what they would pay.
+        _DentalRatesBox(group: group),
         if (enrolled && (addingSpouse || addingChildren)) ...[
           const SizedBox(height: 18),
           const _MiniLabel('WHO IS ON DENTAL'),
@@ -1269,10 +1329,12 @@ class _ReviewSignStep extends StatefulWidget {
   final num dental;
   final bool ichraInterested;
   final num total;
+  final bool adminMode;
   final Future<void> Function(
     Uint8List? signature,
     Map<String, bool> acks,
     Map<String, dynamic> audit,
+    String employeeNotes,
   ) onSubmit;
   const _ReviewSignStep({
     required this.group,
@@ -1285,6 +1347,7 @@ class _ReviewSignStep extends StatefulWidget {
     required this.dental,
     required this.ichraInterested,
     required this.total,
+    required this.adminMode,
     required this.onSubmit,
   });
 
@@ -1298,6 +1361,7 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
     penColor: AppColors.navy,
     exportBackgroundColor: Colors.white,
   );
+  final _notes = TextEditingController();
   bool _tobacco = false;
   bool _preEx = false;
   bool _deduction = false;
@@ -1308,6 +1372,7 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
   @override
   void dispose() {
     _sig.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
@@ -1339,6 +1404,7 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
             'deduction': _ackDeduction,
           },
         },
+        widget.adminMode ? _notes.text.trim() : '',
       );
     } catch (_) {
       if (mounted) {
@@ -1422,6 +1488,19 @@ class _ReviewSignStepState extends State<_ReviewSignStep> {
             ],
           ),
         ),
+        if (widget.adminMode) ...[
+          const SizedBox(height: 22),
+          const _MiniLabel('EMPLOYEE NOTES'),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _notes,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              hintText: 'Internal notes about this employee or enrollment…',
+            ),
+          ),
+        ],
         const SizedBox(height: 24),
         const _MiniLabel('ACKNOWLEDGEMENTS'),
         const SizedBox(height: 8),
@@ -2029,6 +2108,12 @@ String? _dobValidator(String? v) {
   return null;
 }
 
+/// Lets admins use `<br>` (also `<br/>` and `<br />`) in description text as a
+/// line break. flutter_markdown doesn't render raw HTML, so convert those tags
+/// to a Markdown hard line break (two trailing spaces + newline).
+String _mdWithBreaks(String src) =>
+    src.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '  \n');
+
 /// Renders an admin-authored product description (Markdown). Empty -> nothing.
 /// "Read More" (description popup) + "Watch Video" (video popup) for a product
 /// section. Buttons with no content are hidden.
@@ -2080,7 +2165,7 @@ class _PlanActions extends StatelessWidget {
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                   child: MarkdownBody(
-                    data: description,
+                    data: _mdWithBreaks(description),
                     styleSheet: MarkdownStyleSheet(
                       p: const TextStyle(color: AppColors.ink, fontSize: 14, height: 1.55),
                       h1: const TextStyle(
