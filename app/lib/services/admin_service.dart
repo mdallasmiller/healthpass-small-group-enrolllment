@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'db.dart';
 
 /// Determines whether the signed-in user is an authorized admin, and can
 /// claim the first-admin slot.
 class AdminService {
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseFirestore get _db => appDb;
 
   Future<bool> isAdmin(String uid) async {
     final doc = await _db.collection('admins').doc(uid).get();

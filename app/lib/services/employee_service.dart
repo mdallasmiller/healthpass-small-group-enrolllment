@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/employee.dart';
 import '../utils/codes.dart';
+import 'db.dart';
 
 /// Firestore CRUD for a group's employee roster (groups/{groupId}/employees).
 class EmployeeService {
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseFirestore get _db => appDb;
 
   CollectionReference<Map<String, dynamic>> _col(String groupId) =>
       _db.collection('groups').doc(groupId).collection('employees');

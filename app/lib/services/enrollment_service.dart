@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'db.dart';
 
 /// Saves a completed enrollment for an employee.
 ///
@@ -11,7 +12,7 @@ class EnrollmentService {
     String employeeId,
     Map<String, dynamic> data,
   ) async {
-    final db = FirebaseFirestore.instance;
+    final db = appDb;
     final emp =
         db.collection('groups').doc(groupId).collection('employees').doc(employeeId);
     await emp.collection('enrollment').doc('data').set({
@@ -24,7 +25,7 @@ class EnrollmentService {
   /// All submitted enrollments for a group, each as
   /// {employeeId, employee: {...}, data: {...}}. Used for census + reports.
   Future<List<Map<String, dynamic>>> getGroupEnrollments(String groupId) async {
-    final db = FirebaseFirestore.instance;
+    final db = appDb;
     final emps =
         await db.collection('groups').doc(groupId).collection('employees').get();
     final out = <Map<String, dynamic>>[];
@@ -42,7 +43,7 @@ class EnrollmentService {
     String groupId,
     String employeeId,
   ) async {
-    final doc = await FirebaseFirestore.instance
+    final doc = await appDb
         .collection('groups')
         .doc(groupId)
         .collection('employees')

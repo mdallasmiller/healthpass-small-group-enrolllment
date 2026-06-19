@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/group.dart';
+import 'db.dart';
 
 /// Firestore CRUD for groups.
 class GroupService {
-  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseFirestore get _db => appDb;
 
   CollectionReference<Map<String, dynamic>> get _col => _db.collection('groups');
 

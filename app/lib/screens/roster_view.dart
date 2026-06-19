@@ -1,3 +1,4 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -104,6 +105,7 @@ class RosterView extends StatelessWidget {
                         employee: employees[i],
                         onDelete: () => EmployeeService().delete(groupId, employees[i].id!),
                         onInvite: () => _showInvite(context, employees[i]),
+                        onSendInvite: () => _sendInviteToOne(context, employees[i]),
                         onOpen: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => EnrollPortal(
                               group: group, employee: employees[i], adminMode: true),
@@ -347,7 +349,7 @@ class RosterView extends StatelessWidget {
       context: context,
       builder: (_) => _InviteDialog(
         name: withCode.fullName,
-        url: buildEnrollUrl(Uri.base.origin, groupId, id),
+        url: buildEnrollUrl(kEnrollBaseUrl, groupId, id),
         code: withCode.accessCode,
         justCreated: true,
       ),
@@ -497,9 +499,34 @@ class RosterView extends StatelessWidget {
     }
   }
 
+  /// Sends this one employee their invite (email + SMS) via the sendInvites
+  /// Cloud Function with an employeeId filter.
+  Future<void> _sendInviteToOne(BuildContext context, Employee e) async {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      SnackBar(content: Text('Sending invitation to ${e.fullName}…')),
+    );
+    try {
+      final res = await FirebaseFunctions.instance
+          .httpsCallable('sendInvites')
+          .call({'groupId': groupId, 'employeeId': e.id});
+      final data = res.data as Map?;
+      final sent = (data?['sent'] ?? 0) as int;
+      messenger.showSnackBar(SnackBar(
+        content: Text(sent > 0
+            ? 'Invitation sent to ${e.fullName}.'
+            : 'Nothing was sent — check the email/phone and sending setup.'),
+      ));
+    } catch (err) {
+      messenger.showSnackBar(SnackBar(
+        content: Text('Could not send: $err'),
+      ));
+    }
+  }
+
   Future<void> _showInvite(BuildContext context, Employee e) async {
     final code = await EmployeeService().ensureAccessCode(groupId, e);
-    final url = buildEnrollUrl(Uri.base.origin, groupId, e.id!);
+    final url = buildEnrollUrl(kEnrollBaseUrl, groupId, e.id!);
     if (!context.mounted) return;
     showDialog(
       context: context,
@@ -670,12 +697,14 @@ class _EmployeeRow extends StatelessWidget {
   final Employee employee;
   final VoidCallback onDelete;
   final VoidCallback onInvite;
+  final VoidCallback onSendInvite;
   final VoidCallback onOpen;
   final VoidCallback? onView;
   const _EmployeeRow({
     required this.employee,
     required this.onDelete,
     required this.onInvite,
+    required this.onSendInvite,
     required this.onOpen,
     this.onView,
   });
@@ -767,6 +796,20 @@ class _EmployeeRow extends StatelessWidget {
               icon: const Icon(Icons.link_rounded, size: 16),
               label: const Text('Send link + code'),
               style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: 'Email + text this employee their enrollment link and code now.',
+            child: FilledButton.icon(
+              onPressed: onSendInvite,
+              icon: const Icon(Icons.send_rounded, size: 15),
+              label: const Text('Send invitation'),
+              style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                 visualDensity: VisualDensity.compact,
