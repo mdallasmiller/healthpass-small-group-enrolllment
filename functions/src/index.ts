@@ -12,7 +12,7 @@
  *   - sendInvites           (M8)  SendGrid email + Twilio SMS, per roster
  */
 
-import { initializeApp } from "firebase-admin/app";
+import { initializeApp, getApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret, defineString } from "firebase-functions/params";
@@ -20,11 +20,15 @@ import { computeQuote, QuoteInput } from "./pricing";
 
 initializeApp();
 
+/// Our data lives in a dedicated named Firestore database ("enrollment"),
+/// isolated from the project's default DB used by the other apps.
+const enrollmentDb = () => getFirestore(getApp(), "enrollment");
+
 // Email (Twilio SendGrid). The API key is a secret (set with
 // `firebase functions:secrets:set SENDGRID_API_KEY`). The From address/name are
 // non-secret deploy params (functions/.env). SENDGRID_FROM must be on a domain
 // authenticated in SendGrid (e.g. enrollment@joinhealthpass.com).
-const SENDGRID_API_KEY = defineSecret("SENDGRID_API_KEY");
+const SENDGRID_API_KEY = defineSecret("ENROLLMENT_SENDGRID_API_KEY");
 const SENDGRID_FROM = defineString("SENDGRID_FROM", { default: "" });
 const SENDGRID_FROM_NAME = defineString("SENDGRID_FROM_NAME", {
   default: "HealthPass Enrollment",
@@ -40,7 +44,7 @@ const APP_BASE_URL = defineString("APP_BASE_URL", {
 // (starts with "MG").
 const TWILIO_ACCOUNT_SID = defineString("TWILIO_ACCOUNT_SID", { default: "" });
 const TWILIO_FROM = defineString("TWILIO_FROM", { default: "" });
-const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
+const TWILIO_AUTH_TOKEN = defineSecret("ENROLLMENT_TWILIO_AUTH_TOKEN");
 
 const _codeChars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 function generateAccessCode(len = 6): string {
@@ -54,14 +58,14 @@ function generateAccessCode(len = 6): string {
 const DEFAULT_EMAIL_SUBJECT =
   "ENROLL NOW: Your Health Benefit through HealthPass + Health Access";
 const DEFAULT_EMAIL_BODY =
-  "Hello [first name] You can now enroll in your new health benefit through HealthPass " +
-  "and Health Access Solutions. Our secure enrollment portal will gather your " +
-  "information and your plan selection. Enrollment begins today, [Send Date], and will " +
-  "end on [End Date]. Detailed information about the plan and the total cost to the " +
-  "employee will be presented in this enrollment portal. If you experience any issues, " +
-  "please email the HealthPass team at enrollment@joinhealthpass.com. " +
-  "[Begin Enrollment button] [unique group URL]. When prompted, use the following " +
-  "access code: [access code]";
+  "Hello [first name],\n\n" +
+  "You can now enroll in your new health benefit through HealthPass and Health Access " +
+  "Solutions. Our secure enrollment portal will gather your information and plan " +
+  "selection, and show the total cost to you.\n\n" +
+  "Enroll here: [unique group url]\n" +
+  "Access code: [access code]\n\n" +
+  "Enrollment closes [end date]. If you have any issues, email the HealthPass team at " +
+  "enrollment@joinhealthpass.com.";
 
 const DEFAULT_SMS_BODY =
   "Hi [first name], enroll in your HealthPass health benefit here: [unique group url] " +
@@ -107,7 +111,7 @@ export const bootstrapFirstAdmin = onCall(async (request) => {
   if (!uid) {
     throw new HttpsError("unauthenticated", "Sign in before requesting access.");
   }
-  const db = getFirestore();
+  const db = enrollmentDb();
   const admins = db.collection("admins");
 
   const anyAdmin = await admins.limit(1).get();
@@ -157,12 +161,14 @@ export const sendInvites = onCall(
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
 
-    const db = getFirestore();
+    const db = enrollmentDb();
     const adminDoc = await db.collection("admins").doc(uid).get();
     if (!adminDoc.exists) throw new HttpsError("permission-denied", "Admins only.");
 
     const groupId = (request.data?.groupId ?? "") as string;
     if (!groupId) throw new HttpsError("invalid-argument", "Missing groupId.");
+    // Optional: send to just one employee (per-row "Send invitation").
+    const onlyEmployeeId = (request.data?.employeeId ?? "") as string;
 
     // Which delivery channels are configured. Each is optional; at least one
     // must be set up.
@@ -202,7 +208,11 @@ export const sendInvites = onCall(
     let smsSent = 0;
     const errors: string[] = [];
 
-    for (const doc of empsSnap.docs) {
+    const targetDocs = onlyEmployeeId
+      ? empsSnap.docs.filter((d) => d.id === onlyEmployeeId)
+      : empsSnap.docs;
+
+    for (const doc of targetDocs) {
       const e = doc.data();
       if (e.eligible === false) continue; // benefit class ineligible -> no invite
 
@@ -292,7 +302,7 @@ export const sendInvites = onCall(
       sent: emailSent + smsSent,
       emailSent,
       smsSent,
-      total: empsSnap.size,
+      total: targetDocs.length,
       errors,
     };
   }
