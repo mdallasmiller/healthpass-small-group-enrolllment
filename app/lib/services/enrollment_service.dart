@@ -38,6 +38,22 @@ class EnrollmentService {
     return out;
   }
 
+  /// Admin patch: overwrites the enrollment document with updated data.
+  Future<void> patch(
+    String groupId,
+    String employeeId,
+    Map<String, dynamic> data,
+  ) async {
+    await appDb
+        .collection('groups')
+        .doc(groupId)
+        .collection('employees')
+        .doc(employeeId)
+        .collection('enrollment')
+        .doc('data')
+        .set(data);
+  }
+
   /// Reads a submitted enrollment for the admin view (null if not submitted).
   Future<Map<String, dynamic>?> getEnrollment(
     String groupId,

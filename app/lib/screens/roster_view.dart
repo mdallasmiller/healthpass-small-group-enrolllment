@@ -19,11 +19,56 @@ import '../widgets/ui.dart';
 import 'enroll_portal.dart';
 import 'enrollment_detail_screen.dart';
 
-class RosterView extends StatelessWidget {
+class RosterView extends StatefulWidget {
   final Group group;
   const RosterView({super.key, required this.group});
 
   String get groupId => group.id!;
+
+  @override
+  State<RosterView> createState() => _RosterViewState();
+}
+
+class _RosterViewState extends State<RosterView> {
+  String _searchQuery = '';
+  String _sortMode = 'name'; // 'name' or 'status'
+  final _searchController = TextEditingController();
+
+  String get groupId => widget.group.id!;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Employee> _filterAndSort(List<Employee> employees) {
+    // Filter by search query
+    var filtered = employees;
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered
+          .where((e) =>
+              e.firstName.toLowerCase().contains(query) ||
+              e.lastName.toLowerCase().contains(query) ||
+              e.fullName.toLowerCase().contains(query))
+          .toList();
+    }
+
+    // Sort
+    if (_sortMode == 'name') {
+      filtered.sort((a, b) => a.firstName.compareTo(b.firstName));
+    } else if (_sortMode == 'status') {
+      // Completed first, then others
+      filtered.sort((a, b) {
+        final aCompleted = a.status == EmployeeStatus.completed ? 0 : 1;
+        final bCompleted = b.status == EmployeeStatus.completed ? 0 : 1;
+        return aCompleted.compareTo(bCompleted);
+      });
+    }
+
+    return filtered;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,8 +77,10 @@ class RosterView extends StatelessWidget {
       stream: EmployeeService().watch(groupId),
       builder: (context, snap) {
         final employees = snap.data ?? [];
+        final filtered = _filterAndSort(employees);
         return PageBody(
           children: [
+            // Title and buttons row
             Row(
               children: [
                 Expanded(
@@ -45,13 +92,15 @@ class RosterView extends StatelessWidget {
                       Text(
                         employees.isEmpty
                             ? 'Add the employees you want to invite.'
-                            : '${employees.length} employee${employees.length == 1 ? '' : 's'}',
+                            : filtered.isEmpty && _searchQuery.isNotEmpty
+                                ? 'No matches for "$_searchQuery"'
+                                : '${filtered.length} of ${employees.length} employee${employees.length == 1 ? '' : 's'}',
                         style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted),
                       ),
                     ],
                   ),
                 ),
-                if (group.status == GroupStatus.draft)
+                if (widget.group.status == GroupStatus.draft)
                   OutlinedButton.icon(
                     onPressed: () => _finalize(context),
                     icon: const Icon(Icons.verified_rounded, size: 18),
@@ -61,7 +110,7 @@ class RosterView extends StatelessWidget {
                       side: const BorderSide(color: Color(0xFF9ED9BC), width: 1.5),
                     ),
                   ),
-                if (group.status == GroupStatus.draft) const SizedBox(width: 10),
+                if (widget.group.status == GroupStatus.draft) const SizedBox(width: 10),
                 OutlinedButton.icon(
                   onPressed: () => _importCensus(context),
                   icon: const Icon(Icons.table_chart_outlined, size: 18),
@@ -82,6 +131,52 @@ class RosterView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
+            // Search and sort controls
+            if (employees.isNotEmpty)
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: (val) => setState(() => _searchQuery = val),
+                      decoration: InputDecoration(
+                        hintText: 'Search by name...',
+                        hintStyle: const TextStyle(color: AppColors.muted),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: AppColors.muted),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppColors.line),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: AppColors.line),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'name',
+                        label: Text('A-Z'),
+                        icon: Icon(Icons.sort_by_alpha_rounded, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: 'status',
+                        label: Text('Status'),
+                        icon: Icon(Icons.done_all_rounded, size: 16),
+                      ),
+                    ],
+                    selected: {_sortMode},
+                    onSelectionChanged: (selected) =>
+                        setState(() => _sortMode = selected.first),
+                  ),
+                ],
+              ),
+            if (employees.isNotEmpty) const SizedBox(height: 16),
             if (employees.isNotEmpty) ...[
               _legend(),
               const SizedBox(height: 12),
@@ -95,26 +190,28 @@ class RosterView extends StatelessWidget {
               )
             else if (employees.isEmpty)
               _empty(context)
+            else if (filtered.isEmpty)
+              _noResults()
             else
               Card(
                 child: Column(
                   children: [
-                    for (var i = 0; i < employees.length; i++) ...[
+                    for (var i = 0; i < filtered.length; i++) ...[
                       if (i > 0) const Divider(height: 1),
                       _EmployeeRow(
-                        employee: employees[i],
-                        onDelete: () => EmployeeService().delete(groupId, employees[i].id!),
-                        onInvite: () => _showInvite(context, employees[i]),
-                        onSendInvite: () => _sendInviteToOne(context, employees[i]),
+                        employee: filtered[i],
+                        onDelete: () => EmployeeService().delete(groupId, filtered[i].id!),
+                        onInvite: () => _showInvite(context, filtered[i]),
+                        onSendInvite: () => _sendInviteToOne(context, filtered[i]),
                         onOpen: () => Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => EnrollPortal(
-                              group: group, employee: employees[i], adminMode: true),
+                              group: widget.group, employee: filtered[i], adminMode: true),
                         )),
-                        onView: employees[i].status == EmployeeStatus.completed
+                        onView: filtered[i].status == EmployeeStatus.completed
                             ? () => Navigator.of(context).push(MaterialPageRoute(
                                   builder: (_) => EnrollmentDetailScreen(
                                     groupId: groupId,
-                                    employee: employees[i],
+                                    employee: filtered[i],
                                   ),
                                 ))
                             : null,
@@ -189,22 +286,22 @@ class RosterView extends StatelessWidget {
   Future<void> _exportCensus(BuildContext context, {required bool pdf}) async {
     final enr = await _loadEnrollments(context);
     if (enr == null) return;
-    final safe = group.name.isEmpty ? 'group' : group.name;
+    final safe = widget.group.name.isEmpty ? 'group' : widget.group.name;
     if (pdf) {
       await Printing.sharePdf(
-          bytes: await censusPdf(group.name, enr), filename: '$safe census.pdf');
+          bytes: await censusPdf(widget.group.name, enr), filename: '$safe census.pdf');
     } else {
-      downloadText('$safe census.csv', censusCsv(group.name, enr));
+      downloadText('$safe census.csv', censusCsv(widget.group.name, enr));
     }
   }
 
   Future<void> _exportDeduction(BuildContext context, {required bool pdf}) async {
     final enr = await _loadEnrollments(context);
     if (enr == null) return;
-    final safe = group.name.isEmpty ? 'group' : group.name;
+    final safe = widget.group.name.isEmpty ? 'group' : widget.group.name;
     if (pdf) {
       await Printing.sharePdf(
-          bytes: await deductionPdf(group.name, enr),
+          bytes: await deductionPdf(widget.group.name, enr),
           filename: '$safe deduction report.pdf');
     } else {
       downloadText('$safe deduction report.csv', deductionCsv(enr));
@@ -305,13 +402,40 @@ class RosterView extends StatelessWidget {
     );
   }
 
+  Widget _noResults() {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+        child: Column(
+          children: [
+            Container(
+              width: 60,
+              height: 60,
+              decoration: BoxDecoration(
+                color: AppColors.field,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.search_off_rounded, color: AppColors.muted, size: 28),
+            ),
+            const SizedBox(height: 16),
+            Text('No matches found', style: theme.textTheme.titleLarge),
+            const SizedBox(height: 6),
+            Text('Try a different search term.',
+                style: theme.textTheme.bodyMedium?.copyWith(color: AppColors.muted)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _finalize(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Finalize group?'),
         content: Text(
-          'This marks "${group.name}" as active and ready for enrollment. '
+          'This marks "${widget.group.name}" as active and ready for enrollment. '
           'You can still edit it afterwards.',
           style: const TextStyle(color: AppColors.muted, height: 1.5),
         ),
@@ -326,7 +450,7 @@ class RosterView extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await GroupService().update(group.id!, group.copyWith(status: GroupStatus.active));
+    await GroupService().update(widget.group.id!, widget.group.copyWith(status: GroupStatus.active));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Group finalized. Status set to Active')),
