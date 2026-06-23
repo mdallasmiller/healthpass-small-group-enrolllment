@@ -1,5 +1,15 @@
 {
   "projects": {
-    "default": "healthpass-enrollment"
-  }
+    "default": "health-pass-cf171"
+  },
+  "targets": {
+    "health-pass-cf171": {
+      "hosting": {
+        "enroll": [
+          "healthpass-group-enroll"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

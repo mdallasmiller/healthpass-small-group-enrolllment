@@ -1,0 +1,6 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Heart -->
+  <path d="M32 52C32 52 8 36 8 24C8 16 14 10 19 10C23 10 27 13 32 18C37 13 41 10 45 10C50 10 56 16 56 24C56 36 32 52 32 52Z" fill="#E63946" stroke="#E63946" stroke-width="1"/>
+  <!-- Star inside/overlay -->
+  <path d="M32 24L35.2 31.8L43.6 32.6L37.8 37.8L39.4 46.2L32 42.2L24.6 46.2L26.2 37.8L20.4 32.6L28.8 31.8Z" fill="#FFD700" stroke="#FFD700" stroke-width="0.5"/>
+</svg>
