@@ -5,6 +5,7 @@ import '../services/group_service.dart';
 import '../theme.dart';
 import '../utils/formatters.dart';
 import '../utils/group_pdf.dart';
+import '../utils/product_descriptions.dart';
 import '../utils/web_download.dart';
 import '../widgets/ui.dart';
 
@@ -111,10 +112,25 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
     put('healthVideoUrl', det.healthVideoUrl);
     put('ichraVideoUrl', det.ichraVideoUrl);
     put('dentalVideoUrl', det.dentalVideoUrl);
-    put('preventiveDescription', det.preventiveDescription);
-    put('healthDescription', det.healthDescription);
-    put('ichraDescription', det.ichraDescription);
-    put('dentalDescription', det.dentalDescription);
+    // Auto-fill product descriptions with default templates when creating a new
+    // group (existing groups keep whatever the admin already saved).
+    final isNewGroup = widget.group == null;
+    put('preventiveDescription',
+        det.preventiveDescription.isEmpty && isNewGroup
+            ? defaultPreventiveDescription
+            : det.preventiveDescription);
+    put('healthDescription',
+        det.healthDescription.isEmpty && isNewGroup
+            ? defaultHealthDescription
+            : det.healthDescription);
+    put('ichraDescription',
+        det.ichraDescription.isEmpty && isNewGroup
+            ? defaultIchraDescription
+            : det.ichraDescription);
+    put('dentalDescription',
+        det.dentalDescription.isEmpty && isNewGroup
+            ? defaultDentalDescription
+            : det.dentalDescription);
     put('notes', det.notes);
     _domesticPartners = det.domesticPartners;
     _stacking = det.stacking;
@@ -239,9 +255,11 @@ class _GroupPlanFormState extends State<GroupPlanForm> {
       ichraEoTarget: _parse(t('ichraEoTarget')),
       ichraSpouseTarget: _parse(t('ichraSpouseTarget')),
       ichraChildTarget: _parse(t('ichraChildTarget')),
+      preventiveVideoUrl: t('preventiveVideoUrl'),
       healthVideoUrl: t('healthVideoUrl'),
       ichraVideoUrl: t('ichraVideoUrl'),
       dentalVideoUrl: t('dentalVideoUrl'),
+      preventiveDescription: t('preventiveDescription'),
       healthDescription: t('healthDescription'),
       ichraDescription: t('ichraDescription'),
       dentalDescription: t('dentalDescription'),
