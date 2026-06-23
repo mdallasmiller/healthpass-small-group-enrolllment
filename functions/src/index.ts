@@ -146,6 +146,66 @@ export const computeQuoteFn = onCall((request) => {
 });
 
 /**
+ * Lets an HR manager (reached via the `?hr=<groupId>` link, signed in
+ * anonymously) save company/eligibility/contact details without granting the
+ * client direct write access to `groups`. Runs with Admin privileges so the
+ * Firestore security rules stay locked down. Only a fixed whitelist of HR
+ * fields under `details.*` can be written — contribution strategy, rates and
+ * status are never touched.
+ */
+const HR_STRING_FIELDS = [
+  "dba",
+  "taxId",
+  "fullTimeEmployees",
+  "website",
+  "businessPhone",
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "state",
+  "zip",
+  "adminFirstName",
+  "adminLastName",
+  "adminPhone",
+  "billingFirstName",
+  "billingLastName",
+  "billingPhone",
+  "billingEmail",
+  "eligibilityDefinition",
+  "waitingPeriod",
+  "waitingPeriodOther",
+];
+
+export const updateHrDetails = onCall(async (request) => {
+  // Anonymous sign-in is fine here — the unguessable group link is the
+  // capability. We only require *some* authenticated session.
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Sign in first.");
+  }
+  const groupId = (request.data?.groupId ?? "") as string;
+  if (!groupId) throw new HttpsError("invalid-argument", "Missing groupId.");
+
+  const details = (request.data?.details ?? {}) as Record<string, unknown>;
+  const update: Record<string, unknown> = {};
+  for (const f of HR_STRING_FIELDS) {
+    if (typeof details[f] === "string") update[`details.${f}`] = details[f];
+  }
+  if (typeof details.domesticPartners === "boolean") {
+    update["details.domesticPartners"] = details.domesticPartners;
+  }
+  if (Object.keys(update).length === 0) {
+    throw new HttpsError("invalid-argument", "No valid fields to update.");
+  }
+
+  const db = enrollmentDb();
+  const ref = db.collection("groups").doc(groupId);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "Group not found.");
+  await ref.update(update);
+  return { ok: true, updated: Object.keys(update).length };
+});
+
+/**
  * Sends each rostered employee their enrollment invite (link + access code) via
  * SendGrid email and/or Twilio SMS. Admins only. Generates an access code if one
  * is missing and records invite.emailSentAt / invite.smsSentAt per employee.

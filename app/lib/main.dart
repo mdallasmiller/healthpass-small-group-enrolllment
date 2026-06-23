@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'theme.dart';
 import 'screens/gate.dart';
 import 'screens/enroll_entry_screen.dart';
+import 'screens/hr_form_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +15,7 @@ Future<void> main() async {
   runApp(EnrollmentApp(
     enrollGroupId: params['g'],
     enrollEmployeeId: params['e'],
+    hrGroupId: params['hr'],
   ));
 }
 
@@ -24,21 +26,33 @@ class EnrollmentApp extends StatelessWidget {
   final String? enrollGroupId;
   final String? enrollEmployeeId;
 
-  const EnrollmentApp({super.key, this.enrollGroupId, this.enrollEmployeeId});
+  /// When opened via an HR manager link (`?hr=<groupId>`)
+  /// it routes to the HR form.
+  final String? hrGroupId;
+
+  const EnrollmentApp({
+    super.key,
+    this.enrollGroupId,
+    this.enrollEmployeeId,
+    this.hrGroupId,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isEnroll = enrollGroupId != null && enrollEmployeeId != null;
+    final isHr = hrGroupId != null;
     return MaterialApp(
       title: 'HealthPass Enrollment',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
-      home: isEnroll
-          ? EnrollEntryScreen(
-              groupId: enrollGroupId!,
-              employeeId: enrollEmployeeId!,
-            )
-          : const AuthGate(),
+      home: isHr
+          ? HrFormScreen(groupId: hrGroupId!)
+          : isEnroll
+              ? EnrollEntryScreen(
+                  groupId: enrollGroupId!,
+                  employeeId: enrollEmployeeId!,
+                )
+              : const AuthGate(),
     );
   }
 }

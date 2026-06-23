@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/group.dart';
 import '../services/group_service.dart';
 import '../theme.dart';
@@ -35,6 +36,62 @@ class GroupDetailPage extends StatelessWidget {
     if (context.mounted) Navigator.of(context).maybePop();
   }
 
+  void _showHrLink(BuildContext context) {
+    final baseUrl = Uri.base.origin;
+    final hrUrl = '$baseUrl?hr=${group.id}';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('HR Manager Form Link'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Share this link with the HR manager to fill in group details:',
+                style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.5)),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.field,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      hrUrl,
+                      style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Copy',
+                    icon: const Icon(Icons.copy_rounded, size: 18, color: AppColors.muted),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: hrUrl));
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Link copied to clipboard')),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -65,6 +122,15 @@ class GroupDetailPage extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
+                    FilledButton.icon(
+                      onPressed: () => _showHrLink(context),
+                      icon: const Icon(Icons.link_rounded, size: 18),
+                      label: const Text('HR Manager Link'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF0A7D4F),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
                     OutlinedButton.icon(
                       onPressed: () => _delete(context),
                       icon: const Icon(Icons.delete_outline_rounded, size: 18),
